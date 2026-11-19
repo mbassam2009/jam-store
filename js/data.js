@@ -1,8 +1,8 @@
 /* JAM store data. One row per color. Stock is 1 or 0 and is never shown to shoppers. */
 window.JAM = (function () {
-  // Photos still live on the Salla CDN. Swap IMG_BASE to "img/" once the files are copied into the repo.
-  var IMG_BASE = 'https://cdn.files.salla.network/other/50764866/';
-  var IMG_SUFFIX = '-original.webp';
+  // Photos are stored in this repo under img/, copied from the Salla store by .github/workflows/photos.yml.
+  var IMG_BASE = 'img/';
+  var IMG_SUFFIX = '.webp';
 
   var PRICE = 340;
   var COMPARE_AT = 499;
