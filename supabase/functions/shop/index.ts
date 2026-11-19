@@ -20,6 +20,16 @@ const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), {
 const ORIGINS = (env("ALLOWED_ORIGINS") || "https://sa-jam.com,https://www.sa-jam.com")
   .split(",").map((s) => s.trim()).filter(Boolean);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// The Moyasar secret key, or "" when it is missing or was pasted wrong (for example with the dashboard's hiding dots).
+function secretKey(): string {
+  const key = env("MOYASAR_SECRET_KEY").trim();
+  if (!key) return "";
+  if (!/^sk_(test|live)_[A-Za-z0-9]+$/.test(key)) {
+    console.error(`MOYASAR_SECRET_KEY does not look like a Moyasar secret key (length ${key.length}, starts with sk_: ${key.startsWith("sk_")})`);
+    return "";
+  }
+  return key;
+}
 
 function corsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("origin") ?? "";
@@ -99,14 +109,17 @@ type Settled = { http: number; body: Record<string, unknown> };
 
 async function settle(paymentId: string): Promise<Settled> {
   if (!UUID.test(paymentId)) return { http: 400, body: { error: "bad_payment_id" } };
-  const key = env("MOYASAR_SECRET_KEY");
+  const key = secretKey();
   if (!key) return { http: 503, body: { error: "payments_off" } };
 
   const res = await fetch(`https://api.moyasar.com/v1/payments/${paymentId}`, {
     headers: { Authorization: "Basic " + btoa(key + ":") },
   });
   if (res.status === 404) return { http: 404, body: { error: "payment_not_found" } };
-  if (!res.ok) return { http: 502, body: { error: "moyasar_unreachable" } };
+  if (!res.ok) {
+    console.error(`Moyasar answered ${res.status} when asked for payment ${paymentId}`);
+    return { http: 502, body: { error: "moyasar_refused", moyasar_status: res.status } };
+  }
   const pay = await res.json();
 
   const orderId = String(pay?.metadata?.order_id ?? "");
@@ -142,7 +155,10 @@ async function settle(paymentId: string): Promise<Settled> {
 
   const method = clean(pay?.source?.company || pay?.source?.type, 30) || null;
   const { data: r, error } = await db.rpc("mark_paid", { p_order: order.id, p_payment: pay.id, p_method: method });
-  if (error || !r || r.error) return { http: 500, body: { error: "could_not_close_order" } };
+  if (error || !r || r.error) {
+    console.error("mark_paid failed", error?.message ?? r?.error);
+    return { http: 500, body: { error: "could_not_close_order" } };
+  }
 
   await notifyOnce(r.order, r.status);
   return { http: 200, body: { status: r.status, ...summary } };
@@ -157,7 +173,7 @@ Deno.serve(async (req) => {
     if (req.method === "GET" && path === "/stock") {
       const { data, error } = await db.rpc("stock_public");
       if (error) return json(req, { error: "stock_unavailable" }, 500);
-      return json(req, { stock: data, payments: Boolean(env("MOYASAR_SECRET_KEY")) });
+      return json(req, { stock: data, payments: Boolean(secretKey()) });
     }
 
     if (req.method === "POST" && path === "/orders") {
@@ -209,7 +225,8 @@ Deno.serve(async (req) => {
     }
 
     return json(req, { error: "not_found" }, 404);
-  } catch (_e) {
+  } catch (e) {
+    console.error("shop error on", path, (e as Error)?.name, (e as Error)?.message);
     return json(req, { error: "server_error" }, 500);
   }
 });
