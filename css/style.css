@@ -346,8 +346,10 @@ ul { list-style: none; }
 .pay__hold { color: var(--mute); font-size: .95rem; }
 .link { font: inherit; font-weight: 700; color: var(--ink); background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: .2em; cursor: pointer; }
 .link:focus-visible { outline: 3px solid var(--sign); outline-offset: 2px; }
-#payForm { background: var(--paper); border-radius: 18px; padding: 1.2rem; min-height: 14rem; direction: rtl; }
-#payForm .mysr-form:empty::before { content: 'نجهّز نموذج الدفع…'; color: var(--mute); }
+#payForm { background: var(--paper); border-radius: 18px; overflow: hidden; }
+#payFrame { display: block; width: 100%; height: 44rem; border: 0; background: var(--paper); }
+.pay__alt { font-size: .92rem; color: var(--mute); }
+.pay__alt a { color: var(--ink); font-weight: 700; text-underline-offset: .2em; }
 .co--result { grid-template-columns: 1fr; max-width: 44rem; }
 .result { display: grid; gap: .9rem; font-size: 1.08rem; line-height: 1.8; }
 .result strong { font-family: var(--board); font-size: 1.5em; letter-spacing: .06em; direction: ltr; unicode-bidi: isolate; }

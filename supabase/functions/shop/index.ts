@@ -1,15 +1,15 @@
-// JAM shop API. One Supabase edge function, four jobs:
-//   GET  /stock                 which colors can be bought (true/false only)
-//   POST /orders                hold the pieces and open an order
-//   POST /orders/:id/payment    remember the payment a shopper just started
-//   POST /confirm               check a payment with Moyasar and close the order
-//   POST /webhook               same check, called by Moyasar itself
+// JAM shop API. One Supabase edge function:
+//   GET  /stock       which colors can be bought (true/false only), and whether payments are in test or live mode
+//   POST /orders      hold the pieces, open an order and create its Paylink invoice
+//   POST /confirm     ask Paylink whether an invoice was paid and close the order
+//   POST /reconcile   same check for recent unpaid orders, for shoppers who paid but never came back to the site
 //
+// Payments go through Paylink (https://developer.paylink.sa).
 // Secrets (set in Supabase, never in this repo):
-//   MOYASAR_SECRET_KEY      sk_test_... or sk_live_...
-//   MOYASAR_WEBHOOK_SECRET  any long random text, also typed into Moyasar's webhook form
-//   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   where the "new order" message goes (optional)
-//   ALLOWED_ORIGINS         optional, comma separated. Defaults to the live site.
+//   PAYLINK_API_ID, PAYLINK_SECRET_KEY   the live keys from my.paylink.sa. While they are missing the function
+//                                        runs against Paylink's test system with the test keys Paylink publishes.
+//   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID where the "new order" message goes (optional)
+//   ALLOWED_ORIGINS                      optional, comma separated. Defaults to the live site.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -20,16 +20,52 @@ const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), {
 const ORIGINS = (env("ALLOWED_ORIGINS") || "https://sa-jam.com,https://www.sa-jam.com")
   .split(",").map((s) => s.trim()).filter(Boolean);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// The Moyasar secret key, or "" when it is missing or was pasted wrong (for example with the dashboard's hiding dots).
-function secretKey(): string {
-  const key = env("MOYASAR_SECRET_KEY").trim();
-  if (!key) return "";
-  if (!/^sk_(test|live)_[A-Za-z0-9]+$/.test(key)) {
-    console.error(`MOYASAR_SECRET_KEY does not look like a Moyasar secret key (length ${key.length}, starts with sk_: ${key.startsWith("sk_")})`);
-    return "";
-  }
-  return key;
+const SITE = "https://sa-jam.com/";
+
+/* ---------- Paylink ---------- */
+// Paylink's published sandbox credentials (developer.paylink.sa, "Authentication"). They move no money.
+const PAYLINK_TEST = { apiId: "APP_ID_1123453311", secretKey: "0662abb5-13c7-38ab-cd12-236e58f43766" };
+function paylink() {
+  const apiId = env("PAYLINK_API_ID").trim(), secretKey = env("PAYLINK_SECRET_KEY").trim();
+  const live = Boolean(apiId && secretKey);
+  return {
+    mode: live ? "live" : "test",
+    base: live ? "https://restapi.paylink.sa" : "https://restpilot.paylink.sa",
+    apiId: live ? apiId : PAYLINK_TEST.apiId,
+    secretKey: live ? secretKey : PAYLINK_TEST.secretKey,
+  };
 }
+let cachedToken = { value: "", until: 0, mode: "" };
+async function paylinkToken(): Promise<string> {
+  const cfg = paylink();
+  if (cachedToken.value && cachedToken.mode === cfg.mode && Date.now() < cachedToken.until) return cachedToken.value;
+  const res = await fetch(cfg.base + "/api/auth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ apiId: cfg.apiId, secretKey: cfg.secretKey, persistToken: "false" }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.id_token) throw new Error(`Paylink auth failed with status ${res.status}`);
+  // Paylink's short token lasts 30 minutes. Keep it for 20.
+  cachedToken = { value: data.id_token, until: Date.now() + 20 * 60 * 1000, mode: cfg.mode };
+  return cachedToken.value;
+}
+// deno-lint-ignore no-explicit-any
+async function paylinkCall(path: string, body?: unknown): Promise<{ ok: boolean; status: number; data: any }> {
+  const res = await fetch(paylink().base + path, {
+    method: body ? "POST" : "GET",
+    headers: {
+      Authorization: "Bearer " + await paylinkToken(),
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => null);
+  return { ok: res.ok, status: res.status, data };
+}
+// deno-lint-ignore no-explicit-any
+const invoiceRef = (order: any) => `JAM-${order.number}-${String(order.id).slice(0, 6)}`;
 
 function corsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("origin") ?? "";
@@ -49,12 +85,6 @@ function json(req: Request, body: unknown, status = 200): Response {
 function clean(v: unknown, max: number): string {
   // deno-lint-ignore no-control-regex
   return String(v ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
-}
-function sameText(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }
 const sar = (halalas: number) => (halalas / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
 
@@ -78,7 +108,7 @@ function orderMessage(o: any, status: string): string {
   // deno-lint-ignore no-explicit-any
   const items = (o.items as any[]).map((i) => `• ${i.name}، ${i.color}`).join("\n");
   const head = status === "oversold"
-    ? `⚠️ طلب #${o.number} مدفوع لكن القطعة انباعت قبل وصول الدفع. لازم ترجّع المبلغ للعميلة من لوحة ميسّر.`
+    ? `⚠️ طلب #${o.number} مدفوع لكن القطعة انباعت قبل وصول الدفع. لازم ترجّع المبلغ للعميلة من لوحة بيلينك.`
     : `🛍️ طلب جديد #${o.number}`;
   return [
     head,
@@ -93,7 +123,7 @@ function orderMessage(o: any, status: string): string {
     `العنوان: ${o.city}، ${o.district}، ${o.address}`,
   ].join("\n");
 }
-// Send once per order, even when the shopper's browser and Moyasar's webhook both report the payment.
+// Send once per order, even when the shopper's browser and the reconcile timer both report the payment.
 // deno-lint-ignore no-explicit-any
 async function notifyOnce(order: any, status: string) {
   const { data: claimed } = await db.from("orders")
@@ -107,61 +137,59 @@ async function notifyOnce(order: any, status: string) {
 /* ---------- payment check ---------- */
 type Settled = { http: number; body: Record<string, unknown> };
 
-async function settle(paymentId: string): Promise<Settled> {
-  if (!UUID.test(paymentId)) return { http: 400, body: { error: "bad_payment_id" } };
-  const key = secretKey();
-  if (!key) return { http: 503, body: { error: "payments_off" } };
-
-  const res = await fetch(`https://api.moyasar.com/v1/payments/${paymentId}`, {
-    headers: { Authorization: "Basic " + btoa(key + ":") },
-  });
-  if (res.status === 404) return { http: 404, body: { error: "payment_not_found" } };
-  if (!res.ok) {
-    console.error(`Moyasar answered ${res.status} when asked for payment ${paymentId}`);
-    return { http: 502, body: { error: "moyasar_refused", moyasar_status: res.status } };
-  }
-  const pay = await res.json();
-
-  const orderId = String(pay?.metadata?.order_id ?? "");
-  if (!UUID.test(orderId)) return { http: 422, body: { error: "payment_has_no_order" } };
-  const { data: order } = await db.from("orders").select("*").eq("id", orderId).maybeSingle();
-  if (!order) return { http: 404, body: { error: "order_not_found" } };
-
+// deno-lint-ignore no-explicit-any
+async function settleOrder(order: any): Promise<Settled> {
   const summary = { number: order.number, total: order.total, items: order.items };
+  if (order.status === "paid" || order.status === "oversold") return { http: 200, body: { status: order.status, ...summary } };
 
-  if (pay.status !== "paid") {
-    // A failed card does not undo an order that another payment already closed.
-    if (order.status === "paid") return { http: 200, body: { status: "paid", ...summary } };
-    const waiting = pay.status === "initiated" || pay.status === "authorized";
+  const tx = String(order.attempt_payment_id ?? "");
+  const inv = await paylinkCall("/api/getInvoice/" + encodeURIComponent(tx));
+  if (!inv.ok || !inv.data) {
+    console.error(`Paylink answered ${inv.status} for invoice ${tx}`);
+    return { http: 502, body: { error: "paylink_refused", ...summary } };
+  }
+  const status = String(inv.data.orderStatus ?? "").toLowerCase();
+  const open = order.status === "pending" && new Date(order.expires_at) > new Date();
+
+  if (status !== "paid") {
+    const errors = Array.isArray(inv.data.paymentErrors) ? inv.data.paymentErrors : [];
+    const last = errors[errors.length - 1];
+    const failed = status === "canceled" || errors.length > 0;
     return {
       http: 200,
       body: {
-        status: waiting ? "waiting" : "failed",
-        message: clean(pay?.source?.message, 200),
-        order_id: order.id,
-        order_open: order.status === "pending" && new Date(order.expires_at) > new Date(),
+        status: failed ? "failed" : "waiting",
+        message: clean(last?.errorTitle || last?.errorMessage, 200),
+        order_open: open && status !== "canceled",
         ...summary,
       },
     };
   }
 
-  if (pay.currency !== "SAR" || pay.amount !== order.total) {
-    await telegram(
-      `⚠️ دفعة ما تطابق الطلب #${order.number}: وصل ${sar(Number(pay.amount) || 0)} ${pay.currency} والمطلوب ${sar(order.total)} ر.س. ` +
-        `الطلب ما تأكد. رقم الدفعة: ${pay.id}`,
-    );
+  // Paid at Paylink. Trust it only if it is this order's invoice for this order's amount.
+  const paidHalalas = Math.round(Number(inv.data.amount) * 100);
+  const ref = inv.data.gatewayOrderRequest?.orderNumber;
+  if (paidHalalas !== order.total || (ref && ref !== invoiceRef(order))) {
+    console.error(`Invoice ${tx} does not match order ${order.number}: paid ${paidHalalas}, expected ${order.total}, ref ${ref}`);
+    await telegram(`⚠️ دفعة ما تطابق الطلب #${order.number}: وصل ${sar(paidHalalas || 0)} والمطلوب ${sar(order.total)} ر.س. الطلب ما تأكد. رقم العملية: ${tx}`);
     return { http: 409, body: { status: "mismatch", ...summary } };
   }
 
-  const method = clean(pay?.source?.company || pay?.source?.type, 30) || null;
-  const { data: r, error } = await db.rpc("mark_paid", { p_order: order.id, p_payment: pay.id, p_method: method });
+  const method = clean(inv.data.paymentReceipt?.paymentMethod, 30).toLowerCase() || null;
+  const { data: r, error } = await db.rpc("mark_paid", { p_order: order.id, p_payment: tx, p_method: method });
   if (error || !r || r.error) {
     console.error("mark_paid failed", error?.message ?? r?.error);
-    return { http: 500, body: { error: "could_not_close_order" } };
+    return { http: 500, body: { error: "could_not_close_order", ...summary } };
   }
-
   await notifyOnce(r.order, r.status);
   return { http: 200, body: { status: r.status, ...summary } };
+}
+
+async function settle(transactionNo: string): Promise<Settled> {
+  if (!/^[A-Za-z0-9_-]{6,40}$/.test(transactionNo)) return { http: 400, body: { error: "bad_transaction" } };
+  const { data: order } = await db.from("orders").select("*").eq("attempt_payment_id", transactionNo).maybeSingle();
+  if (!order) return { http: 404, body: { error: "order_not_found" } };
+  return await settleOrder(order);
 }
 
 /* ---------- routes ---------- */
@@ -173,7 +201,7 @@ Deno.serve(async (req) => {
     if (req.method === "GET" && path === "/stock") {
       const { data, error } = await db.rpc("stock_public");
       if (error) return json(req, { error: "stock_unavailable" }, 500);
-      return json(req, { stock: data, payments: Boolean(secretKey()) });
+      return json(req, { stock: data, payments: true, mode: paylink().mode });
     }
 
     if (req.method === "POST" && path === "/orders") {
@@ -197,31 +225,65 @@ Deno.serve(async (req) => {
       if (data.error === "sold_out") return json(req, data, 409);
       if (data.error === "too_many") return json(req, data, 429);
       if (data.error) return json(req, data, 400);
-      return json(req, data, 201);
-    }
 
-    const attach = path.match(/^\/orders\/([0-9a-f-]{36})\/payment$/i);
-    if (req.method === "POST" && attach) {
-      const body = await req.json().catch(() => null);
-      const paymentId = String(body?.payment_id ?? "");
-      if (!UUID.test(attach[1]) || !UUID.test(paymentId)) return json(req, { error: "bad_request" }, 400);
-      await db.from("orders").update({ attempt_payment_id: paymentId }).eq("id", attach[1]).eq("status", "pending");
-      return json(req, { ok: true });
+      // The order exists and the pieces are held. Now open its invoice at Paylink.
+      const { data: order } = await db.from("orders").select("*").eq("id", data.id).single();
+      // deno-lint-ignore no-explicit-any
+      const products = (order.items as any[]).map((i) => ({ title: `${i.name} ${i.color}`, price: i.price / 100, qty: 1 }));
+      if (order.shipping > 0) products.push({ title: "الشحن (أرامكس)", price: order.shipping / 100, qty: 1 });
+      // deno-lint-ignore no-explicit-any
+      let inv: { ok: boolean; status: number; data: any } = { ok: false, status: 0, data: null };
+      try {
+        inv = await paylinkCall("/api/addInvoice", {
+          orderNumber: invoiceRef(order),
+          amount: order.total / 100,
+          currency: "SAR",
+          callBackUrl: SITE,
+          cancelUrl: SITE + "#/checkout",
+          clientName: order.name,
+          clientMobile: order.phone,
+          products,
+          note: `طلب JAM رقم ${order.number}`,
+        });
+      } catch (e) {
+        console.error("addInvoice threw", (e as Error)?.message);
+      }
+      if (!inv.ok || !inv.data?.transactionNo || !inv.data?.url) {
+        console.error(`Paylink addInvoice answered ${inv.status}`, JSON.stringify(inv.data ?? {}).slice(0, 300));
+        // No way to pay, so give the pieces back right away.
+        await db.from("orders").update({ expires_at: new Date(Date.now() - 1000).toISOString() }).eq("id", order.id);
+        await db.rpc("release_expired");
+        return json(req, { error: "payment_unavailable" }, 502);
+      }
+      await db.from("orders").update({ attempt_payment_id: String(inv.data.transactionNo) }).eq("id", order.id);
+      return json(req, {
+        ...data,
+        transaction_no: String(inv.data.transactionNo),
+        pay_url: inv.data.url,
+        frame_url: inv.data.mobileUrl ?? null,
+        mode: paylink().mode,
+      }, 201);
     }
 
     if (req.method === "POST" && path === "/confirm") {
       const body = await req.json().catch(() => null);
-      const out = await settle(String(body?.payment_id ?? ""));
+      const out = await settle(String(body?.transaction_no ?? ""));
       return json(req, out.body, out.http);
     }
 
-    if (req.method === "POST" && path === "/webhook") {
-      const secret = env("MOYASAR_WEBHOOK_SECRET");
-      const body = await req.json().catch(() => null);
-      if (!secret || !sameText(String(body?.secret_token ?? ""), secret)) return json(req, { error: "forbidden" }, 403);
-      // The payload is only a hint. settle() asks Moyasar for the real payment.
-      if (body?.type === "payment_paid" && body?.data?.id) await settle(String(body.data.id));
-      return json(req, { ok: true });
+    // For the shopper who paid on Paylink's page and closed the tab before coming back.
+    // Looks only at this shop's own recent unpaid orders, so it is safe to call from a timer.
+    if (req.method === "POST" && path === "/reconcile") {
+      const since = new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString();
+      const { data: open } = await db.from("orders").select("*")
+        .in("status", ["pending", "expired"]).not("attempt_payment_id", "is", null)
+        .gte("created_at", since).order("created_at", { ascending: false }).limit(15);
+      let closed = 0;
+      for (const order of open ?? []) {
+        const out = await settleOrder(order).catch(() => null);
+        if (out?.body?.status === "paid" || out?.body?.status === "oversold") closed++;
+      }
+      return json(req, { checked: (open ?? []).length, closed });
     }
 
     return json(req, { error: "not_found" }, 404);

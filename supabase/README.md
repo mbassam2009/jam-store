@@ -4,27 +4,28 @@ Orders, stock and payment checks for https://sa-jam.com. Runs on Supabase.
 
 - `migrations/001_shop.sql`: tables and the order logic (hold stock for 20 minutes, release unpaid holds, close paid orders).
 - `migrations/002_seed_products.sql`: starting stock.
-- `functions/shop/index.ts`: the API the site talks to. Deploy with JWT verification off, because shoppers and Moyasar's webhook call it without a Supabase login.
+- `functions/shop/index.ts`: the API the site talks to. Deploy with JWT verification off, because shoppers call it without a Supabase login.
 
-## Secrets to set on the function
+## Payments: Paylink
+
+The function talks to Paylink (https://developer.paylink.sa). With no secrets set it runs on Paylink's **test** system using the test keys Paylink publishes, and the site only opens checkout through `https://sa-jam.com/?test=1`.
+
+To go live, set these two secrets on the function (Supabase > Edge Functions > Secrets). They come from my.paylink.sa:
 
 | Name | What it is |
 |---|---|
-| `MOYASAR_SECRET_KEY` | Moyasar secret key (`sk_test_...` while testing, `sk_live_...` after activation) |
-| `MOYASAR_WEBHOOK_SECRET` | Any long random text. Type the same text into Moyasar > Settings > Webhooks |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Where the new-order message is sent |
+| `PAYLINK_API_ID` | Paylink API ID |
+| `PAYLINK_SECRET_KEY` | Paylink secret key |
 
-## Turning payments on for the site
-
-In `js/data.js` set `API` to the function address (`https://<project>.supabase.co/functions/v1/shop`) and `PAY_KEY` to Moyasar's publishable key (`pk_...`). With either one empty the site stays in preview mode.
-
-Moyasar webhook: `https://<project>.supabase.co/functions/v1/shop/webhook`, event `payment_paid`.
+Optional: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to get a message per order.
 
 ## How a sale goes
 
-1. Shopper sends the delivery form. The API holds the pieces and opens an order with a total it computed itself.
-2. Shopper pays in Moyasar's form. The payment carries the order id.
-3. Back on the site, the API asks Moyasar for that payment and checks status, amount and currency before marking the order paid.
-4. Stock drops, and the owner gets one message per order.
+1. Shopper sends the delivery form. The API holds the pieces, opens an order with a total it computed itself, and creates a Paylink invoice for exactly that amount.
+2. Shopper pays on Paylink's page, shown inside the checkout page.
+3. Paylink sends the shopper back to the site with the invoice number. The API asks Paylink for that invoice and checks status and amount before marking the order paid.
+4. Stock drops. If the shopper paid but never came back, `POST /reconcile` finds the payment; a database timer calls it every few minutes.
 
 Changing stock by hand: edit the `stock` column of `products` in the Supabase table editor.
+
+An earlier version used Moyasar. It is in the git history before the commit that introduced Paylink.

@@ -4,13 +4,11 @@ window.JAM = (function () {
   var IMG_BASE = 'img/';
   var IMG_SUFFIX = '.webp';
 
-  // Payments. While either value is empty the site stays in preview mode and charges nothing.
-  // API is the address of the shop function (supabase/functions/shop).
-  // PAY_KEY is Moyasar's publishable key, the one that starts with pk_. The secret key never goes in this repo.
-  // With a pk_test_ key, checkout only opens for a visitor who came in through https://sa-jam.com/?test=1.
-  // Everyone else keeps seeing preview mode, so nobody can "buy" stock with a test card.
+  // Orders, stock and payments run through the shop function (supabase/functions/shop). Payments are by Paylink.
+  // With API empty the site is a preview and charges nothing.
+  // While the shop is on Paylink's test system, checkout only opens for a visitor who came in through
+  // https://sa-jam.com/?test=1, so nobody can "buy" stock with a test card. No payment keys live in this repo.
   var API = 'https://divkgblwymgiyknynyen.supabase.co/functions/v1/shop';
-  var PAY_KEY = 'pk_test_yyME5RfJFp27wJoDdzqBfdbYoQ1XrAYVUhFiv5U5';
 
   var PRICE = 340;
   var COMPARE_AT = 499;
@@ -71,7 +69,7 @@ window.JAM = (function () {
   var HERO = ['amalfi-terracotta', 'suzhou-wine', 'capri-olive', 'capri-denim', 'amalfi-navy', 'amalfi-pink'];
 
   return {
-    API: API, PAY_KEY: PAY_KEY,
+    API: API,
     PRICE: PRICE, COMPARE_AT: COMPARE_AT, SHIPPING: SHIPPING,
     CITIES: CITIES, SETS: SETS, SET_ORDER: SET_ORDER, PRODUCTS: PRODUCTS, HERO: HERO,
     img: function (id) { return IMG_BASE + id + IMG_SUFFIX; },
