@@ -196,7 +196,16 @@ ul { list-style: none; }
   margin-top: 1.2rem; display: grid; grid-auto-flow: column; grid-auto-columns: min(66vw, 17.5rem);
   gap: clamp(.8rem, 1.6vw, 1.3rem); overflow-x: auto; scroll-snap-type: x proximity;
   padding: .4rem max(var(--pad), calc((100vw - var(--max)) / 2 + var(--pad))) 1.4rem;
-  scrollbar-width: thin; scrollbar-color: var(--ink) transparent;
+  scrollbar-width: none;
+}
+.rail::-webkit-scrollbar { display: none; }
+@media (min-width: 44rem) {
+  .rail { grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); overflow: visible; max-width: var(--max); margin-inline: auto; padding: .4rem var(--pad) 1.4rem; }
+}
+@media (min-width: 72rem) {
+  .rail { grid-template-columns: repeat(6, 1fr); }
+  .card__meta { grid-template-columns: auto 1fr; }
+  .card__meta .price { grid-column: 1 / -1; }
 }
 .card { scroll-snap-align: start; text-decoration: none; display: grid; gap: .65rem; align-content: start; }
 .card__img { position: relative; aspect-ratio: 3 / 4; border-radius: 16px; overflow: hidden; background: color-mix(in srgb, var(--c) 30%, var(--paper)); }
