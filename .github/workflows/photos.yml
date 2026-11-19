@@ -22,17 +22,9 @@ jobs:
           grep -oE "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" js/data.js | sort -u > /tmp/ids.txt
           echo "photos listed: $(wc -l < /tmp/ids.txt)"
           while read -r id; do
-            curl -fsSL --retry 3 -o "img/$id.webp" "https://cdn.files.salla.network/other/50764866/$id-original.webp"
+            curl -fsSL --retry 3 -o "img/$id.webp" "https://cdn.files.salla.network/other/50764866/$id-original.webp" || { echo "missing: $id"; rm -f "img/$id.webp"; }
           done < /tmp/ids.txt
           echo "photos saved: $(ls img | wc -l)"; du -sh img
-      - name: Shrink to web size
-        run: |
-          for f in img/*.webp; do
-            if convert "$f" -resize '1200x1600>' -quality 82 "/tmp/out.webp" && [ -s /tmp/out.webp ]; then
-              mv /tmp/out.webp "$f"
-            fi
-          done
-          du -sh img
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"

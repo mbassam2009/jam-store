@@ -53,7 +53,6 @@ window.JAM = (function () {
     [1799638471, 'riviera', 'yellow',     'أصفر',         '#F2C319', 'sydney',   '62588b9f-75b1-46ac-8de8-18b61466f561', '4235f0b4-b6ce-4eda-a95a-b702e1d6e58b', 1],
     [703708049,  'riviera', 'rust',       'قرميدي',       '#A8452F', 'istanbul', 'addb6366-f276-4420-a8f9-88c8b93b47f1', '39fd1b64-8501-4a67-a093-b32a3f70e6f8', 1],
     [1608282197, 'riviera', 'black',      'أسود',         '#161616', 'nyc',      '1a26ac2a-c7a4-41ab-b83e-6ce0e495d9ba', null, 1],
-    [1319918808, 'riviera', 'sky',        'أزرق سماوي',   '#9DB7DD', 'paris',    'fe295999-3c67-4405-a89b-23e85170ddf5', null, 0]
   ];
 
   var PRODUCTS = ROWS.map(function (r) {
