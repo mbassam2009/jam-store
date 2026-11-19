@@ -135,13 +135,21 @@
       '<div><dt>توصيل أرامكس</dt><dd>' + sar(J.SHIPPING.fee) + '، ومجاني من ' + sar(J.SHIPPING.freeFrom) + '</dd></div>' +
       '<div><dt>واتساب</dt><dd>اسألينا عن أي طقم قبل الطلب</dd></div></dl></section>';
   }
+  var heroTurn = 0;
   function showHero(i, userPicked) {
     var p = J.bySku(J.HERO[i]);
     var a = document.getElementById('heroA'), b = document.getElementById('heroB');
     if (!a) return;
     var next = a.classList.contains('is-on') ? b : a, prev = next === a ? b : a;
-    next.src = J.img(p.model); next.alt = alt(p);
-    next.classList.add('is-on'); prev.classList.remove('is-on');
+    var url = J.img(p.model), turn = ++heroTurn;
+    // Fade only once the photo has arrived, so the window never shows an empty frame.
+    var pre = new Image();
+    pre.onload = pre.onerror = function () {
+      if (turn !== heroTurn || !next.isConnected) return;
+      next.src = url; next.alt = alt(p);
+      next.classList.add('is-on'); prev.classList.remove('is-on');
+    };
+    pre.src = url;
     setTone(p.hex);
     var tag = document.getElementById('heroTag');
     tag.href = href(p);
