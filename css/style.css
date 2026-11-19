@@ -364,7 +364,7 @@ ul { list-style: none; }
 .foot__facts { display: grid; gap: 1rem 2rem; grid-template-columns: repeat(2, 1fr); font-size: .95rem; }
 .foot__facts dt { font-weight: 700; color: var(--sign); }
 .foot__facts a { text-underline-offset: .25em; }
-@media (min-width: 52rem) { .foot__in { grid-template-columns: 1fr 2fr; } .foot__facts { grid-template-columns: repeat(4, auto); } }
+@media (min-width: 52rem) { .foot__in { grid-template-columns: 1fr 2fr; } .foot__facts { grid-template-columns: repeat(3, auto); } }
 
 .toast {
   position: fixed; inset-block-end: 1.2rem; inset-inline: 0; margin-inline: auto; width: max-content; max-width: calc(100% - 2rem);

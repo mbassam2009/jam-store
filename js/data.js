@@ -7,8 +7,10 @@ window.JAM = (function () {
   // Payments. While either value is empty the site stays in preview mode and charges nothing.
   // API is the address of the shop function (supabase/functions/shop).
   // PAY_KEY is Moyasar's publishable key, the one that starts with pk_. The secret key never goes in this repo.
-  var API = '';
-  var PAY_KEY = '';
+  // With a pk_test_ key, checkout only opens for a visitor who came in through https://sa-jam.com/?test=1.
+  // Everyone else keeps seeing preview mode, so nobody can "buy" stock with a test card.
+  var API = 'https://divkgblwymgiyknynyen.supabase.co/functions/v1/shop';
+  var PAY_KEY = 'pk_test_yyME5RfJFp27wJoDdzqBfdbYoQ1XrAYVUhFiv5U5';
 
   var PRICE = 340;
   var COMPARE_AT = 499;

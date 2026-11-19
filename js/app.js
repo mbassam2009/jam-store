@@ -18,6 +18,14 @@
   /* ---------- shop API (orders, stock, payment check) ---------- */
   var configured = !!(J.API && J.PAY_KEY);
   var paymentsOn = false; // turns true once the shop API says it can verify payments
+  // Test keys: checkout is only for someone who opened the site with ?test=1 in this tab.
+  var testKey = J.PAY_KEY.indexOf('pk_test_') === 0;
+  var tester = false;
+  try {
+    if (new URLSearchParams(location.search).get('test') === '1') sessionStorage.setItem('jam-test', '1');
+    tester = sessionStorage.getItem('jam-test') === '1';
+  } catch (e) { tester = /[?&]test=1/.test(location.search); }
+  var mayPay = !testKey || tester;
   function api(path, body) {
     var opts = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {};
     return fetch(J.API + path, opts).then(function (res) {
@@ -40,7 +48,7 @@
   function setPreviewBar() {
     var bar = document.getElementById('previewBar');
     if (!paymentsOn) { bar.hidden = false; bar.textContent = 'نسخة معاينة. الدفع غير مفعّل بعد.'; return; }
-    var test = J.PAY_KEY.indexOf('pk_test_') === 0;
+    var test = testKey;
     bar.hidden = !test;
     if (test) bar.textContent = 'وضع تجريبي. الدفع ببطاقات اختبار فقط، وما ينخصم أي مبلغ.';
   }
@@ -399,8 +407,8 @@
     if (!configured) return;
     api('/stock').then(function (r) {
       if (!r.ok || !r.data.stock) return;
-      var turnedOn = !paymentsOn && !!r.data.payments;
-      paymentsOn = !!r.data.payments;
+      var turnedOn = !paymentsOn && !!r.data.payments && mayPay;
+      paymentsOn = !!r.data.payments && mayPay;
       setPreviewBar();
       // Reloaded in the middle of paying: bring the payment step back.
       if (turnedOn && current === 'checkout' && orderOpen() && !document.getElementById('payForm')) route();
@@ -437,6 +445,15 @@
     return ok;
   }
 
+  /* ---------- returns policy ---------- */
+  function returnsHtml() {
+    return '<section class="co co--result"><h1>الاسترجاع والاستبدال</h1><div class="result">' +
+      '<p>تقدرين ترجّعين طلبك أو تبدّلينه خلال ٣٠ يوم من استلامه.</p>' +
+      '<p>للترجيع أو التبديل كلمينا واتساب ومعك رقم الطلب، ونرتّب معك الباقي.</p>' +
+      '<p>في الاسترجاع، المبلغ يرجع على نفس البطاقة اللي دفعتي فيها. مدة وصوله تعتمد على بنكك.</p>' +
+      '<div class="result__actions">' + helpLink + shopLink + '</div></div></section>';
+  }
+
   /* ---------- router ---------- */
   var current = '';
   function route() {
@@ -456,6 +473,10 @@
       app.innerHTML = productHtml(p);
       document.title = 'طقم ' + J.SETS[p.set].ar + ' ' + p.color + ' | JAM';
       if (!wasProduct) window.scrollTo(0, 0);
+    } else if (view === 'returns') {
+      app.innerHTML = returnsHtml();
+      document.title = 'الاسترجاع والاستبدال | JAM';
+      window.scrollTo(0, 0);
     } else if (view === 'checkout') {
       app.innerHTML = checkoutHtml();
       document.title = 'إتمام الطلب | JAM';
