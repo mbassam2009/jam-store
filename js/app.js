@@ -140,20 +140,20 @@
     var p = J.bySku(J.HERO[i]);
     var a = document.getElementById('heroA'), b = document.getElementById('heroB');
     if (!a) return;
-    var next = a.classList.contains('is-on') ? b : a, prev = next === a ? b : a;
     var url = J.img(p.model), turn = ++heroTurn;
-    // Fade only once the photo has arrived, so the window never shows an empty frame.
+    // Swap photo, tint and label together, and only once the photo has arrived.
     var pre = new Image();
     pre.onload = pre.onerror = function () {
-      if (turn !== heroTurn || !next.isConnected) return;
+      if (turn !== heroTurn || !a.isConnected) return;
+      var next = a.classList.contains('is-on') ? b : a, prev = next === a ? b : a;
       next.src = url; next.alt = alt(p);
       next.classList.add('is-on'); prev.classList.remove('is-on');
+      setTone(p.hex);
+      var tag = document.getElementById('heroTag');
+      tag.href = href(p);
+      tag.innerHTML = '<strong>' + setName(p) + '</strong><span>' + p.color + '، ' + sar(J.PRICE) + '</span>';
     };
     pre.src = url;
-    setTone(p.hex);
-    var tag = document.getElementById('heroTag');
-    tag.href = href(p);
-    tag.innerHTML = '<strong>' + setName(p) + '</strong><span>' + p.color + '، ' + sar(J.PRICE) + '</span>';
     Array.prototype.forEach.call(document.querySelectorAll('.gate'), function (g, n) { g.setAttribute('aria-pressed', n === i); });
     app.dataset.hero = i;
     if (userPicked) stopHero();
