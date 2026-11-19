@@ -12,6 +12,38 @@
   function alt(p) { return setName(p) + ' ' + p.color + ' في ' + J.CITIES[p.city].ar; }
   function href(p) { return '#/p/' + p.set + '/' + p.key; }
   function setTone(hex) { document.documentElement.style.setProperty('--tone', hex); }
+  function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  var WHATSAPP = 'https://wa.me/966558166661';
+
+  /* ---------- shop API (orders, stock, payment check) ---------- */
+  var configured = !!(J.API && J.PAY_KEY);
+  var paymentsOn = false; // turns true once the shop API says it can verify payments
+  function api(path, body) {
+    var opts = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {};
+    return fetch(J.API + path, opts).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, status: res.status, data: data }; });
+    });
+  }
+  function store(key, value) {
+    try {
+      if (value === null) sessionStorage.removeItem(key); else sessionStorage.setItem(key, JSON.stringify(value));
+    } catch (e) { /* storage unavailable: state lives for this page only */ }
+  }
+  function stored(key) { try { return JSON.parse(sessionStorage.getItem(key) || 'null'); } catch (e) { return null; } }
+  // The order being paid for, and the delivery details the shopper typed.
+  var order = stored('jam-order');
+  var customer = stored('jam-customer') || {};
+  function orderOpen() {
+    return !!order && new Date(order.expires_at).getTime() - Date.now() > 60000 &&
+      order.skus.slice().sort().join() === cart.slice().sort().join();
+  }
+  function setPreviewBar() {
+    var bar = document.getElementById('previewBar');
+    if (!paymentsOn) { bar.hidden = false; bar.textContent = 'نسخة معاينة. الدفع غير مفعّل بعد.'; return; }
+    var test = J.PAY_KEY.indexOf('pk_test_') === 0;
+    bar.hidden = !test;
+    if (test) bar.textContent = 'وضع تجريبي. الدفع ببطاقات اختبار فقط، وما ينخصم أي مبلغ.';
+  }
 
   /* ---------- cart (kept in this browser only) ---------- */
   var cart = [];
@@ -204,12 +236,10 @@
   /* ---------- checkout ---------- */
   function checkoutHtml() {
     if (!cart.length) {
-      return '<section class="co"><h1>إتمام الطلب</h1><div class="empty"><p>السلة فاضية. اختاري طقمك أول.</p><a class="btn" href="#/">تسوّقي الأطقم</a></div></section>';
+      return '<section class="co"><h1>إتمام الطلب</h1><div class="empty"><div id="emptyNotice" class="notice" role="status" hidden></div><p>السلة فاضية. اختاري طقمك أول.</p><a class="btn" href="#/">تسوّقي الأطقم</a></div></section>';
     }
+    if (paymentsOn && orderOpen()) return payHtml();
     var t = totals();
-    function field(id, label, attrs) {
-      return '<div class="field" data-field="' + id + '"><label for="f-' + id + '">' + label + '</label><input id="f-' + id + '" name="' + id + '" ' + attrs + '><p class="field__err" id="e-' + id + '"></p></div>';
-    }
     return '<section class="co"><h1>إتمام الطلب</h1>' +
       '<form class="form" id="coForm" novalidate>' +
       '<h2>بيانات التوصيل</h2>' +
@@ -223,6 +253,169 @@
       '<div id="coNotice" hidden class="notice" role="status"></div>' +
       '</form>' +
       '<aside class="summary" aria-label="ملخص الطلب"><h2>طلبك</h2>' + linesHtml(false) + sumsHtml() + '</aside></section>';
+  }
+  function field(id, label, attrs) {
+    return '<div class="field" data-field="' + id + '"><label for="f-' + id + '">' + label + '</label><input id="f-' + id + '" name="' + id + '" value="' + esc(customer[id]) + '" ' + attrs + '><p class="field__err" id="e-' + id + '"></p></div>';
+  }
+  function payHtml() {
+    return '<section class="co"><h1>الدفع</h1>' +
+      '<div class="pay">' +
+      '<h2>طلب رقم ' + order.number + '</h2>' +
+      '<p class="pay__to">التوصيل إلى: ' + esc(customer.name) + '، ' + esc(customer.city) + '، ' + esc(customer.district) + '، ' + esc(customer.address) + '. ' +
+      '<button class="link" type="button" data-edit>تعديل البيانات</button></p>' +
+      '<p class="pay__hold">حجزنا لك القطع ٢٠ دقيقة لين تكملين الدفع.</p>' +
+      '<div class="mysr-form" id="payForm"></div>' +
+      '<div id="payNotice" class="notice" role="status" hidden></div>' +
+      '</div>' +
+      '<aside class="summary" aria-label="ملخص الطلب"><h2>طلبك</h2>' + linesHtml(false) + sumsHtml() + '</aside></section>';
+  }
+  var moyasarAssets = null;
+  function loadMoyasar() {
+    if (moyasarAssets) return moyasarAssets;
+    moyasarAssets = new Promise(function (resolve, reject) {
+      var css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = 'https://cdn.moyasar.com/mpf/1.15.0/moyasar.css';
+      document.head.appendChild(css);
+      var js = document.createElement('script');
+      js.src = 'https://cdn.moyasar.com/mpf/1.15.0/moyasar.js';
+      js.onload = resolve;
+      js.onerror = function () { moyasarAssets = null; reject(new Error('moyasar')); };
+      document.head.appendChild(js);
+    });
+    return moyasarAssets;
+  }
+  function mountPayment() {
+    var forOrder = order.id;
+    loadMoyasar().then(function () {
+      if (!order || order.id !== forOrder || !document.getElementById('payForm')) return;
+      window.Moyasar.init({
+        element: '#payForm',
+        amount: order.total,
+        currency: 'SAR',
+        description: 'طلب JAM رقم ' + order.number,
+        publishable_api_key: J.PAY_KEY,
+        callback_url: location.origin + location.pathname,
+        methods: ['creditcard'],
+        supported_networks: ['mada', 'visa', 'mastercard'],
+        language: 'ar',
+        fixed_width: false,
+        metadata: { order_id: order.id, order_number: String(order.number) },
+        // Tell the shop which payment belongs to this order before the bank page opens.
+        on_completed: function (payment) {
+          return api('/orders/' + forOrder + '/payment', { payment_id: payment.id }).catch(function () {});
+        }
+      });
+    }).catch(function () {
+      var n = document.getElementById('payNotice');
+      if (n) { n.hidden = false; n.textContent = 'ما قدرنا نفتح نموذج الدفع. تأكدي من الاتصال وحدّثي الصفحة.'; }
+    });
+  }
+  function resultHtml(title, lines, actions) {
+    return '<section class="co co--result"><h1>' + title + '</h1><div class="result">' +
+      lines.map(function (l) { return '<p>' + l + '</p>'; }).join('') +
+      '<div class="result__actions">' + actions + '</div></div></section>';
+  }
+  function itemsLine(items) {
+    return (items || []).map(function (i) { return esc(i.name) + '، ' + esc(i.color); }).join(' / ');
+  }
+  function showResult(html, title) {
+    stopHero();
+    app.innerHTML = html;
+    current = 'result';
+    document.title = title + ' | JAM';
+    window.scrollTo(0, 0);
+  }
+  var shopLink = '<a class="btn" href="#/">رجوع للمتجر</a>';
+  var helpLink = '<a class="btn btn--ghost" href="' + WHATSAPP + '" target="_blank" rel="noopener">كلمينا واتساب</a>';
+  function confirmPayment(paymentId, tries) {
+    showResult(resultHtml('نتأكد من الدفع', ['لحظة، لا تقفلين الصفحة.'], ''), 'نتأكد من الدفع');
+    api('/confirm', { payment_id: paymentId }).then(function (r) {
+      var d = r.data || {}, num = d.number ? String(d.number) : '';
+      if (d.status === 'paid') {
+        cart = []; saveCart(); updateCount();
+        order = null; store('jam-order', null);
+        (d.items || []).forEach(function (i) { var p = J.bySku(i.sku); if (p) p.stock = 0; });
+        showResult(resultHtml('تم الطلب', [
+          'رقم طلبك <strong>' + num + '</strong>. احتفظي فيه.',
+          itemsLine(d.items),
+          'المدفوع: ' + sar(d.total / 100) + '.',
+          'نجهّز طلبك ونشحنه مع ' + J.SHIPPING.carrier + '. أي سؤال، كلمينا واتساب ومعك رقم الطلب.'
+        ], shopLink + helpLink), 'تم الطلب');
+      } else if (d.status === 'oversold') {
+        showResult(resultHtml('القطعة انباعت قبل وصول دفعتك', [
+          'دفعتك وصلت بعد ما انتهى وقت الحجز، والقطعة أخذتها عميلة ثانية.',
+          'بنرجّع لك المبلغ كامل (' + sar(d.total / 100) + '). رقم طلبك <strong>' + num + '</strong>.'
+        ], helpLink + shopLink), 'القطعة انباعت');
+      } else if (d.status === 'waiting' && tries < 5) {
+        setTimeout(function () { confirmPayment(paymentId, tries + 1); }, 3000);
+      } else if (d.status === 'failed' || d.status === 'waiting') {
+        showResult(resultHtml('ما تمت عملية الدفع', [
+          d.message ? 'رد البنك: ' + esc(d.message) + '.' : 'البنك ما قبل العملية.',
+          'ما انخصم منك شي. ' + (d.order_open ? 'القطع لسا محجوزة لك، جربي ببطاقة ثانية.' : 'انتهى وقت الحجز، ارجعي للسلة واطلبي من جديد.')
+        ], (d.order_open ? '<a class="btn" href="#/checkout">جربي مرة ثانية</a>' : shopLink) + helpLink), 'ما تمت عملية الدفع');
+      } else {
+        showResult(resultHtml('ما قدرنا نتأكد من الدفع', [
+          'لا تدفعين مرة ثانية. كلمينا واتساب' + (num ? ' ومعك رقم الطلب <strong>' + num + '</strong>' : '') + ' ونتأكد لك.'
+        ], helpLink + shopLink), 'ما قدرنا نتأكد من الدفع');
+      }
+    }).catch(function () {
+      showResult(resultHtml('ما قدرنا نتأكد من الدفع', [
+        'الاتصال انقطع. لا تدفعين مرة ثانية.',
+        'حدّثي الصفحة، وإذا تكرر كلمينا واتساب.'
+      ], '<button class="btn" type="button" data-reload>تحديث الصفحة</button>' + helpLink), 'ما قدرنا نتأكد من الدفع');
+    });
+  }
+  function submitOrder(form) {
+    var btn = form.querySelector('button[type="submit"]'), label = btn.textContent;
+    var notice = document.getElementById('coNotice');
+    function say(msg) { notice.hidden = false; notice.textContent = msg; btn.disabled = false; btn.textContent = label; }
+    ['name', 'phone', 'city', 'district', 'address'].forEach(function (k) { customer[k] = form.elements[k].value.trim(); });
+    customer.phone = customer.phone.replace(/\s/g, '');
+    store('jam-customer', customer);
+    btn.disabled = true; btn.textContent = 'لحظة…'; notice.hidden = true;
+    api('/orders', { items: cart, customer: customer }).then(function (r) {
+      var d = r.data || {};
+      if (r.ok && d.id) {
+        order = { id: d.id, number: d.number, total: d.total, expires_at: d.expires_at, skus: cart.slice() };
+        store('jam-order', order);
+        route();
+      } else if (d.error === 'sold_out') {
+        var names = (d.skus || []).map(function (sku) {
+          var p = J.bySku(sku); if (!p) return '';
+          p.stock = 0; return setName(p) + ' ' + p.color;
+        }).filter(Boolean);
+        cart = cart.filter(function (sku) { return (d.skus || []).indexOf(sku) === -1; });
+        saveCart(); updateCount(); route();
+        var n = document.getElementById('coNotice') || document.getElementById('emptyNotice');
+        if (n) { n.hidden = false; n.textContent = 'انباع قبل شوي: ' + names.join('، ') + '. شلناه من سلتك.'; }
+      } else if (d.error === 'too_many') {
+        say('عندك أكثر من طلب مفتوح. كمّلي دفع واحد منها أو جربي بعد ٢٠ دقيقة.');
+      } else {
+        say('ما قدرنا نفتح الطلب. راجعي البيانات وجربي مرة ثانية.');
+      }
+    }).catch(function () { say('الاتصال انقطع. جربي مرة ثانية.'); });
+  }
+  function loadStock() {
+    if (!configured) return;
+    api('/stock').then(function (r) {
+      if (!r.ok || !r.data.stock) return;
+      var turnedOn = !paymentsOn && !!r.data.payments;
+      paymentsOn = !!r.data.payments;
+      setPreviewBar();
+      // Reloaded in the middle of paying: bring the payment step back.
+      if (turnedOn && current === 'checkout' && orderOpen() && !document.getElementById('payForm')) route();
+      var changed = false;
+      J.PRODUCTS.forEach(function (p) {
+        if (!(p.sku in r.data.stock)) return;
+        var v = r.data.stock[p.sku] ? 1 : 0;
+        // A piece held by this shopper's own open order still counts as theirs.
+        if (!v && order && order.skus.indexOf(p.sku) !== -1 && new Date(order.expires_at) > new Date()) v = 1;
+        if (p.stock !== v) { p.stock = v; changed = true; }
+      });
+      var kept = cart.filter(function (sku) { var p = J.bySku(sku); return p && p.stock > 0; });
+      if (kept.length !== cart.length) { cart = kept; saveCart(); updateCount(); changed = true; }
+      if (changed && current !== 'result' && !document.getElementById('payForm')) { current = ''; route(); }
+    }).catch(function () { /* keep the stock that shipped with the page */ });
   }
   function validate(form) {
     var ok = true, first = null;
@@ -267,6 +460,7 @@
       app.innerHTML = checkoutHtml();
       document.title = 'إتمام الطلب | JAM';
       window.scrollTo(0, 0);
+      if (document.getElementById('payForm')) mountPayment();
     } else {
       if (current !== 'home') {
         app.innerHTML = homeHtml();
@@ -288,8 +482,11 @@
 
   /* ---------- events ---------- */
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-hero],[data-add],[data-rm],[data-close],.thumb');
+    var t = e.target.closest('[data-hero],[data-add],[data-rm],[data-close],[data-edit],[data-reload],.thumb');
     if (!t) return;
+    if (t.hasAttribute('data-reload')) { location.reload(); return; }
+    // Back to the delivery form. Sending it again opens a fresh order and drops this hold.
+    if (t.hasAttribute('data-edit')) { order = null; store('jam-order', null); route(); return; }
     if (t.dataset.hero !== undefined) { showHero(+t.dataset.hero, true); return; }
     if (t.dataset.add) { addToCart(t.dataset.add); t.textContent = 'في السلة، عرض السلة'; return; }
     if (t.dataset.rm) { removeFromCart(t.dataset.rm); return; }
@@ -303,6 +500,7 @@
     if (e.target.id !== 'coForm') return;
     e.preventDefault();
     if (!validate(e.target)) return;
+    if (paymentsOn) { submitOrder(e.target); return; }
     var n = document.getElementById('coNotice');
     n.hidden = false;
     n.textContent = 'بياناتك صحيحة. الدفع الإلكتروني يتفعّل عند إطلاق الموقع، وهذي نسخة معاينة ما تسجّل أي طلب.';
@@ -312,8 +510,20 @@
   document.getElementById('cartClose').addEventListener('click', closeCart);
   document.getElementById('scrim').addEventListener('click', closeCart);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !document.getElementById('cart').hidden) closeCart(); });
-  window.addEventListener('hashchange', route);
+  window.addEventListener('hashchange', function () {
+    if (!document.getElementById('cart').hidden) closeCart();
+    route();
+  });
 
   updateCount();
-  route();
+  // Coming back from the bank page: Moyasar adds ?id=<payment> to the address.
+  var returned = new URLSearchParams(location.search).get('id');
+  if (returned && configured) {
+    paymentsOn = true; setPreviewBar();
+    history.replaceState(null, '', location.pathname);
+    confirmPayment(returned, 0);
+  } else {
+    route();
+  }
+  loadStock();
 })();

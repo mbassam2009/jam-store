@@ -339,6 +339,21 @@ ul { list-style: none; }
 .notice { background: var(--sign); border-radius: 12px; padding: .9rem 1rem; font-weight: 600; }
 @media (min-width: 56rem) { .co { grid-template-columns: 1.2fr .8fr; align-items: start; } .co h1 { grid-column: 1 / -1; } .summary { position: sticky; top: 5.5rem; } }
 
+/* payment step and the screen after the bank page */
+.pay { display: grid; gap: 1rem; }
+.pay h2 { margin-bottom: 0; }
+.pay__to { line-height: 1.8; }
+.pay__hold { color: var(--mute); font-size: .95rem; }
+.link { font: inherit; font-weight: 700; color: var(--ink); background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: .2em; cursor: pointer; }
+.link:focus-visible { outline: 3px solid var(--sign); outline-offset: 2px; }
+#payForm { background: var(--paper); border-radius: 18px; padding: 1.2rem; min-height: 14rem; direction: rtl; }
+#payForm:empty::before { content: 'نجهّز نموذج الدفع…'; color: var(--mute); }
+.co--result { grid-template-columns: 1fr; max-width: 44rem; }
+.result { display: grid; gap: .9rem; font-size: 1.08rem; line-height: 1.8; }
+.result strong { font-family: var(--board); font-size: 1.5em; letter-spacing: .06em; direction: ltr; unicode-bidi: isolate; }
+.result__actions { display: flex; flex-wrap: wrap; gap: .8rem; margin-top: .6rem; }
+.result__actions:empty { display: none; }
+
 /* ---------- footer + toast ---------- */
 .foot { background: var(--ink); color: var(--paper); }
 .foot__in { max-width: var(--max); margin: 0 auto; padding: clamp(2rem, 5vw, 3.5rem) var(--pad); display: grid; gap: 2rem; }

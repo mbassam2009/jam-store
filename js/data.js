@@ -4,6 +4,12 @@ window.JAM = (function () {
   var IMG_BASE = 'img/';
   var IMG_SUFFIX = '.webp';
 
+  // Payments. While either value is empty the site stays in preview mode and charges nothing.
+  // API is the address of the shop function (supabase/functions/shop).
+  // PAY_KEY is Moyasar's publishable key, the one that starts with pk_. The secret key never goes in this repo.
+  var API = '';
+  var PAY_KEY = '';
+
   var PRICE = 340;
   var COMPARE_AT = 499;
   var SHIPPING = { carrier: 'أرامكس', fee: 29, freeFrom: 400 };
@@ -63,6 +69,7 @@ window.JAM = (function () {
   var HERO = ['amalfi-terracotta', 'suzhou-wine', 'capri-olive', 'capri-denim', 'amalfi-navy', 'amalfi-pink'];
 
   return {
+    API: API, PAY_KEY: PAY_KEY,
     PRICE: PRICE, COMPARE_AT: COMPARE_AT, SHIPPING: SHIPPING,
     CITIES: CITIES, SETS: SETS, SET_ORDER: SET_ORDER, PRODUCTS: PRODUCTS, HERO: HERO,
     img: function (id) { return IMG_BASE + id + IMG_SUFFIX; },
