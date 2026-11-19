@@ -272,7 +272,7 @@
       '<p class="pay__to">التوصيل إلى: ' + esc(customer.name) + '، ' + esc(customer.city) + '، ' + esc(customer.district) + '، ' + esc(customer.address) + '. ' +
       '<button class="link" type="button" data-edit>تعديل البيانات</button></p>' +
       '<p class="pay__hold">حجزنا لك القطع ٢٠ دقيقة لين تكملين الدفع.</p>' +
-      '<div class="mysr-form" id="payForm"></div>' +
+      '<div id="payForm"><div class="mysr-form"></div></div>' +
       '<div id="payNotice" class="notice" role="status" hidden></div>' +
       '</div>' +
       '<aside class="summary" aria-label="ملخص الطلب"><h2>طلبك</h2>' + linesHtml(false) + sumsHtml() + '</aside></section>';
@@ -297,7 +297,8 @@
     loadMoyasar().then(function () {
       if (!order || order.id !== forOrder || !document.getElementById('payForm')) return;
       window.Moyasar.init({
-        element: '#payForm',
+        // Moyasar renames the element it mounts on, so it gets its own inner div and a class selector.
+        element: '.mysr-form',
         amount: order.total,
         currency: 'SAR',
         description: 'طلب JAM رقم ' + order.number,
