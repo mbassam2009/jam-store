@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JAM | أطقم نسائية متناسقة</title>
+  <meta name="description" content="JAM: أطقم نسائية من قطعتين بلون واحد. بلوزة مع بنطلون واسع، فري سايز، ٣٤٠ ر.س للطقم.">
+  <meta name="theme-color" content="#101B33">
+  <link rel="preload" href="fonts/alexandria-arabic-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <a class="skip" href="#app">تخطّي إلى المحتوى</a>
+
+  <p class="preview-bar" id="previewBar">نسخة معاينة. الدفع غير مفعّل بعد.</p>
+
+  <header class="top" id="top">
+    <nav class="top__nav" aria-label="الأطقم">
+      <a href="#/set/amalfi">أمالفي</a>
+      <a href="#/set/capri">كابري</a>
+      <a href="#/set/suzhou">سوجو</a>
+      <a href="#/set/riviera">ريفييرا</a>
+    </nav>
+    <a class="top__logo" href="#/" aria-label="JAM الصفحة الرئيسية">
+      <span class="logo-word">JAM</span><span class="logo-sub">PARIS</span>
+    </a>
+    <button class="top__cart" id="cartBtn" type="button" aria-haspopup="dialog" aria-controls="cart">
+      <span>السلة</span><span class="top__count" id="cartCount" aria-live="polite">٠</span>
+    </button>
+  </header>
+
+  <main id="app" tabindex="-1"></main>
+
+  <footer class="foot">
+    <div class="foot__in">
+      <div class="foot__brand">
+        <span class="foot__logo"><span class="logo-word">JAM</span><span class="logo-sub">PARIS</span></span>
+        <p>أطقم نسائية من قطعتين بلون واحد.</p>
+      </div>
+      <dl class="foot__facts">
+        <div><dt>التوصيل</dt><dd>أرامكس ٢٩ ر.س، ومجاني للطلبات من ٤٠٠ ر.س</dd></div>
+        <div><dt>المقاس</dt><dd>فري سايز لكل الأطقم</dd></div>
+        <div><dt>واتساب</dt><dd><a href="https://wa.me/966558166661" dir="ltr">+966 55 816 6661</a></dd></div>
+        <div><dt>وثيقة العمل الحر</dt><dd dir="ltr">FL-805880192</dd></div>
+      </dl>
+    </div>
+  </footer>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <aside class="cart" id="cart" role="dialog" aria-modal="true" aria-labelledby="cartTitle" hidden>
+    <header class="cart__head">
+      <h2 id="cartTitle">السلة</h2>
+      <button class="cart__close" id="cartClose" type="button">إغلاق</button>
+    </header>
+    <div class="cart__body" id="cartBody"></div>
+  </aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
