@@ -14,13 +14,14 @@ window.JAM = (function () {
   var COMPARE_AT = 499;
   var SHIPPING = { carrier: 'أرامكس', fee: 29, freeFrom: 400 };
 
+  // lat/lon place each city on the globe.
   var CITIES = {
-    paris:    { ar: 'باريس',    code: 'CDG' },
-    nyc:      { ar: 'نيويورك',  code: 'JFK' },
-    london:   { ar: 'لندن',     code: 'LHR' },
-    rome:     { ar: 'روما',     code: 'FCO' },
-    istanbul: { ar: 'إسطنبول',  code: 'IST' },
-    sydney:   { ar: 'سيدني',    code: 'SYD' }
+    paris:    { ar: 'باريس',    code: 'CDG', lat: 48.86,  lon: 2.35 },
+    nyc:      { ar: 'نيويورك',  code: 'JFK', lat: 40.71,  lon: -74.01 },
+    london:   { ar: 'لندن',     code: 'LHR', lat: 51.51,  lon: -0.13 },
+    rome:     { ar: 'روما',     code: 'FCO', lat: 41.90,  lon: 12.50 },
+    istanbul: { ar: 'إسطنبول',  code: 'IST', lat: 41.01,  lon: 28.98 },
+    sydney:   { ar: 'سيدني',    code: 'SYD', lat: -33.87, lon: 151.21 }
   };
 
   var SETS = {

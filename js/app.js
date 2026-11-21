@@ -4,6 +4,7 @@
   var app = document.getElementById('app');
   var nf = new Intl.NumberFormat('ar-SA');
   var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var finePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   var heroTimer = null;
 
   function sar(n) { return nf.format(n) + ' ر.س'; }
@@ -11,7 +12,8 @@
   function setName(p) { return 'طقم ' + J.SETS[p.set].ar; }
   function alt(p) { return setName(p) + ' ' + p.color + ' في ' + J.CITIES[p.city].ar; }
   function href(p) { return '#/p/' + p.set + '/' + p.key; }
-  function setTone(hex) { document.documentElement.style.setProperty('--tone', hex); }
+  var globe = null; // the spinning globe on the home page, while that page is open
+  function setTone(hex) { document.documentElement.style.setProperty('--tone', hex); if (globe) globe.setTone(hex); }
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   var WHATSAPP = 'https://wa.me/966558166661';
 
@@ -64,8 +66,13 @@
   }
   function updateCount() {
     var el = document.getElementById('cartCount');
+    var was = el.textContent;
     el.textContent = nf.format(cart.length);
     el.dataset.full = cart.length > 0;
+    // a small jump when the number changes
+    if (was !== el.textContent && el.animate && !reduceMotion) {
+      el.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.45)' }, { transform: 'scale(1)' }], { duration: 420, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    }
   }
 
   var toastTimer;
@@ -128,46 +135,77 @@
   function removeFromCart(sku) {
     cart = cart.filter(function (s) { return s !== sku; });
     saveCart(); updateCount(); renderCart();
-    if (location.hash === '#/checkout') route();
+    if (path === '#/checkout') route();
   }
 
   /* ---------- home ---------- */
-  function cardHtml(p) {
+  var ICON_NEXT = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var ICON_PREV = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function coords(c) {
+    return Math.abs(c.lat).toFixed(2) + '°' + (c.lat >= 0 ? 'N' : 'S') + ' ' + Math.abs(c.lon).toFixed(2) + '°' + (c.lon >= 0 ? 'E' : 'W');
+  }
+  function lookHtml(p) {
     var c = J.CITIES[p.city];
-    return '<a class="card' + (p.stock ? '' : ' card--out') + '" href="' + href(p) + '" style="--c:' + p.hex + '">' +
-      '<div class="card__img"><img src="' + J.img(p.model) + '" alt="' + alt(p) + '" loading="lazy" width="675" height="900">' +
-      '<span class="card__city">' + c.code + '</span>' + (p.stock ? '' : '<span class="stamp">نفد</span>') + '</div>' +
-      '<div class="card__meta"><span class="card__dot"></span>' +
-      '<span class="card__color">' + p.color + ' <span class="card__where">' + c.ar + '</span></span>' +
-      (p.stock ? priceHtml() : '<span class="price">نفد</span>') + '</div></a>';
+    return '<a class="look' + (p.stock ? '' : ' look--out') + '" href="' + href(p) + '" data-sku="' + p.sku + '" style="--c:' + p.hex + '" draggable="false">' +
+      '<span class="look__img"><img src="' + J.img(p.model) + '" alt="' + alt(p) + '" loading="lazy" width="675" height="900" draggable="false">' +
+      '<span class="code">' + c.code + '</span>' + (p.stock ? '' : '<span class="stamp">نفد</span>') + '</span></a>';
+  }
+  function focusHtml(p) {
+    var c = J.CITIES[p.city], inCart = cart.indexOf(p.sku) !== -1;
+    return '<div class="focus__info"><p class="focus__color">' + p.color + '</p>' +
+      '<p class="focus__city">' + c.ar + '<span class="code-inline">' + c.code + '</span></p></div>' +
+      '<div class="focus__buy">' + (p.stock ? priceHtml() : '<span class="price price--out">نفد هذا اللون</span>') +
+      (p.stock ? '<button class="btn" type="button" data-add="' + p.sku + '">' + (inCart ? 'في السلة، عرض السلة' : 'أضيفي للسلة') + '</button>' : '') +
+      '<a class="btn btn--ghost" href="' + href(p) + '">تفاصيل الطقم</a></div>';
   }
   function homeHtml() {
-    var first = J.bySku(J.HERO[0]);
+    var first = J.bySku(J.HERO[0]), fc = J.CITIES[first.city];
     var gates = J.HERO.map(function (sku, i) {
       var p = J.bySku(sku), c = J.CITIES[p.city];
       return '<button class="gate" type="button" data-hero="' + i + '" aria-pressed="' + (i === 0) + '">' +
         '<span class="gate__code">' + c.code + '</span><span class="gate__city">' + c.ar + '</span></button>';
     }).join('');
+    var pins = J.HERO.map(function (sku, i) {
+      var p = J.bySku(sku), c = J.CITIES[p.city];
+      return '<button class="pin" type="button" tabindex="-1" data-city="' + p.city + '" data-hero="' + i + '"><span>' + c.code + '</span></button>';
+    }).join('');
     var rows = J.SET_ORDER.map(function (k) {
-      var s = J.SETS[k];
-      var dots = J.inSet(k).map(function (p) { return '<span class="dot' + (p.stock ? '' : ' dot--out') + '" style="background:' + p.hex + '"></span>'; }).join('');
-      return '<a class="flight" href="#/set/' + k + '"><span class="flight__name">' + s.ar + '<small>' + s.en + '</small></span>' +
-        '<span class="flight__top">' + s.top + ' مع بنطلون واسع</span><span class="flight__dots" aria-hidden="true">' + dots + '</span>' +
-        '<span class="flight__price">' + nf.format(J.PRICE) + '</span></a>';
+      var s = J.SETS[k], list = J.inSet(k);
+      var dots = list.map(function (p) { return '<span class="dot' + (p.stock ? '' : ' dot--out') + '" style="background:' + p.hex + '"></span>'; }).join('');
+      return '<a class="row" href="#/set/' + k + '" data-preview="' + J.img(list[0].model) + '" style="--c:' + list[0].hex + '">' +
+        '<span class="row__name">' + s.ar + '<small>' + s.en + '</small></span>' +
+        '<span class="row__top">' + s.top + ' مع بنطلون واسع</span><span class="row__dots" aria-hidden="true">' + dots + '</span>' +
+        '<span class="row__price">' + nf.format(J.PRICE) + '<small>ر.س</small></span></a>';
     }).join('');
     var sets = J.SET_ORDER.map(function (k) {
-      var s = J.SETS[k];
-      return '<section class="set" id="set-' + k + '"><div class="set__head"><h2 class="set__name">طقم ' + s.ar + '</h2>' +
-        '<p class="set__top">' + s.top + ' مع بنطلون واسع</p></div><div class="rail">' + J.inSet(k).map(cardHtml).join('') + '</div></section>';
+      var s = J.SETS[k], list = J.inSet(k);
+      var sw = list.map(function (p, i) {
+        return '<button class="swatch' + (p.stock ? '' : ' swatch--out') + '" type="button" data-flow-go="' + k + ':' + i + '" aria-pressed="false" aria-label="' + p.color + (p.stock ? '' : '، نفد') + '" style="--c:' + p.hex + '"></button>';
+      }).join('');
+      return '<section class="set" id="set-' + k + '" data-set="' + k + '">' +
+        '<div class="set__head"><div><h2 class="set__name">طقم ' + s.ar + '</h2><p class="set__top">' + s.top + ' مع بنطلون واسع</p></div>' +
+        '<div class="set__nav"><button class="arrow" type="button" data-flow-step="' + k + ':-1" aria-label="اللون السابق">' + ICON_PREV + '</button>' +
+        '<button class="arrow" type="button" data-flow-step="' + k + ':1" aria-label="اللون التالي">' + ICON_NEXT + '</button></div></div>' +
+        '<div class="flow" data-flow="' + k + '">' + list.map(lookHtml).join('') + '</div>' +
+        '<div class="set__foot"><div class="swatches" role="group" aria-label="ألوان طقم ' + s.ar + '">' + sw + '</div>' +
+        '<div class="focus" id="focus-' + k + '"></div></div></section>';
     }).join('');
     return '<section class="hero"><div class="hero__in">' +
-      '<div class="hero__text"><h1 class="hero__title"><span>طقم واحد.</span><span>ست مدن.</span></h1>' +
-      '<p class="hero__lede">بلوزة وبنطلون واسع بلون واحد. كل لون صوّرناه في مدينة، اختاري لونك.</p>' +
-      '<div class="hero__cta"><a class="btn" href="#/set/amalfi">تسوّقي الأطقم</a></div></div>' +
-      '<div class="window-wrap"><div class="window"><img class="is-on" id="heroA" src="' + J.img(first.model) + '" alt="' + alt(first) + '" width="675" height="900"><img id="heroB" alt="" width="675" height="900"></div>' +
-      '<a class="tag" id="heroTag" href="' + href(first) + '"><strong>' + setName(first) + '</strong><span>' + first.color + '، ' + sar(J.PRICE) + '</span></a></div>' +
-      '<div class="gates" role="group" aria-label="المدن">' + gates + '</div></div></section>' +
-      '<section class="board"><div class="board__in"><h2 class="board__title">أربع قصّات، وكل طقم بسعر واحد.</h2><div class="board__rows">' + rows + '</div></div></section>' +
+      '<div class="hero__text"><h1 class="hero__title"><span class="ln"><span>طقم واحد.</span></span> <span class="ln"><span>ست مدن.</span></span></h1>' +
+      '<p class="hero__lede">بلوزة وبنطلون واسع بلون واحد، ولكل لون مدينة. لفّي الكرة واختاري مدينتك.</p>' +
+      '<div class="hero__cta"><a class="btn" href="#/set/amalfi">تسوّقي الأطقم</a><span class="hero__price">' + sar(J.PRICE) + ' للطقم كامل</span></div>' +
+      '<div class="gates" role="group" aria-label="المدن">' + gates + '</div></div>' +
+      '<div class="stage" id="stage"><div class="orbit" id="orbit"><canvas class="globe" id="globe" aria-hidden="true"></canvas></div>' +
+      '<div class="grab" id="grab" aria-hidden="true"></div>' +
+      '<div class="pins" id="pins" aria-hidden="true">' + pins + '</div>' +
+      '<p class="readout" id="readout" dir="ltr" aria-hidden="true">' + fc.code + ' ' + coords(fc) + '</p>' +
+      '<a class="portal" id="heroTag" href="' + href(first) + '"><span class="portal__img" id="portalImg">' +
+      '<img class="is-on" id="heroA" src="' + J.img(first.model) + '" alt="' + alt(first) + '" width="675" height="900"><img id="heroB" alt="" width="675" height="900"></span>' +
+      '<span class="portal__meta" id="heroMeta"><strong>' + setName(first) + '</strong><span>' + first.color + '، ' + sar(J.PRICE) + '</span></span></a>' +
+      '<p class="stage__hint" id="stageHint">اسحبي الكرة</p></div>' +
+      '</div></section>' +
+      '<section class="index"><div class="index__in"><h2 class="index__title">أربع قصّات، وكل طقم بسعر واحد.</h2><div class="index__rows" id="indexRows">' + rows + '</div></div>' +
+      '<div class="floater" id="floater" aria-hidden="true"><img alt=""></div></section>' +
       sets +
       '<section class="facts"><dl class="facts__in">' +
       '<div><dt>طقم كامل</dt><dd>السعر يشمل البلوزة والبنطلون</dd></div>' +
@@ -175,7 +213,23 @@
       '<div><dt>توصيل أرامكس</dt><dd>' + sar(J.SHIPPING.fee) + '، ومجاني من ' + sar(J.SHIPPING.freeFrom) + '</dd></div>' +
       '<div><dt>واتساب</dt><dd>اسألينا عن أي طقم قبل الطلب</dd></div></dl></section>';
   }
-  var heroTurn = 0;
+
+  /* hero: one look per city, shown in the window beside the globe */
+  var heroTurn = 0, heroAt = 0, readoutTimer = null;
+  function setReadout(c) {
+    var el = document.getElementById('readout');
+    if (!el) return;
+    var final = c.code + ' ' + coords(c);
+    clearInterval(readoutTimer);
+    if (reduceMotion) { el.textContent = final; return; }
+    // numbers roll for a moment before they land on the new city
+    var n = 0;
+    readoutTimer = setInterval(function () {
+      n++;
+      if (n >= 9 || !el.isConnected) { clearInterval(readoutTimer); el.textContent = final; return; }
+      el.textContent = final.replace(/\d/g, function (d, i) { return i < n * 2 ? d : String(Math.floor(Math.random() * 10)); });
+    }, 45);
+  }
   function showHero(i, userPicked) {
     var p = J.bySku(J.HERO[i]);
     var a = document.getElementById('heroA'), b = document.getElementById('heroB');
@@ -189,13 +243,14 @@
       next.src = url; next.alt = alt(p);
       next.classList.add('is-on'); prev.classList.remove('is-on');
       setTone(p.hex);
-      var tag = document.getElementById('heroTag');
-      tag.href = href(p);
-      tag.innerHTML = '<strong>' + setName(p) + '</strong><span>' + p.color + '، ' + sar(J.PRICE) + '</span>';
+      document.getElementById('heroTag').href = href(p);
+      document.getElementById('heroMeta').innerHTML = '<strong>' + setName(p) + '</strong><span>' + p.color + '، ' + sar(J.PRICE) + '</span>';
     };
     pre.src = url;
     Array.prototype.forEach.call(document.querySelectorAll('.gate'), function (g, n) { g.setAttribute('aria-pressed', n === i); });
-    app.dataset.hero = i;
+    heroAt = i;
+    if (globe) globe.flyTo(p.city);
+    setReadout(J.CITIES[p.city]);
     if (userPicked) stopHero();
   }
   function stopHero() { clearInterval(heroTimer); heroTimer = null; }
@@ -203,9 +258,131 @@
     stopHero();
     if (reduceMotion) return;
     heroTimer = setInterval(function () {
-      if (document.hidden) return;
-      showHero(((+app.dataset.hero || 0) + 1) % J.HERO.length, false);
-    }, 3800);
+      if (document.hidden || window.scrollY > window.innerHeight * 0.7) return;
+      showHero((heroAt + 1) % J.HERO.length, false);
+    }, 5200);
+  }
+  function initGlobe() {
+    var canvas = document.getElementById('globe');
+    if (!canvas || !window.JAMGlobe) return;
+    var portal = document.getElementById('heroTag'), orbit = document.getElementById('orbit'), first = J.bySku(J.HERO[0]);
+    globe = window.JAMGlobe({
+      canvas: canvas, grab: document.getElementById('grab'), pins: document.getElementById('pins'), cities: J.CITIES,
+      active: first.city, tone: first.hex, still: reduceMotion,
+      // The canvas is 136% of the stage (see .orbit). The planet sits at 42% of the stage and is 80% of it wide.
+      geometry: function (w, h) { var m = Math.min(w, h); return { cx: w * 0.4412, cy: h * 0.4412, r: m * 0.2941 }; },
+      anchor: function () { return { x: portal.offsetLeft + portal.offsetWidth / 2 - orbit.offsetLeft, y: portal.offsetTop + 4 - orbit.offsetTop }; },
+      onPick: function (city) {
+        for (var i = 0; i < J.HERO.length; i++) if (J.bySku(J.HERO[i]).city === city) { showHero(i, true); break; }
+      },
+      onGrab: function () {
+        stopHero();
+        var hint = document.getElementById('stageHint'); if (hint) hint.classList.add('is-gone');
+      }
+    });
+    // the photo leans a little toward the pointer
+    var stage = document.getElementById('stage'), pic = document.getElementById('portalImg');
+    if (finePointer && !reduceMotion) {
+      stage.addEventListener('pointermove', function (e) {
+        var r = stage.getBoundingClientRect();
+        var x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
+        pic.style.transform = 'perspective(900px) rotateY(' + (x * 10).toFixed(2) + 'deg) rotateX(' + (-y * 8).toFixed(2) + 'deg)';
+      });
+      stage.addEventListener('pointerleave', function () { pic.style.transform = ''; });
+    }
+  }
+  function killHome() {
+    stopHero(); clearInterval(readoutTimer);
+    if (globe) { globe.destroy(); globe = null; }
+    flows = {};
+  }
+
+  /* the four sets: each one is a ring of looks that turns as it scrolls */
+  var flows = {};
+  function flowTarget(f, i) { var c = f.cards[i]; return c.offsetLeft + c.offsetWidth / 2 - f.el.clientWidth / 2; }
+  function centerFlow(f, i, instant) {
+    i = Math.max(0, Math.min(f.cards.length - 1, i));
+    f.el.scrollTo({ left: flowTarget(f, i), behavior: instant || reduceMotion ? 'auto' : 'smooth' });
+  }
+  function layoutFlow(f) {
+    var mid = f.el.scrollLeft + f.el.clientWidth / 2, best = 0, bestD = 1e9;
+    f.cards.forEach(function (c, i) {
+      var d = (c.offsetLeft + c.offsetWidth / 2 - mid) / c.offsetWidth, ad = Math.abs(d);
+      if (ad < bestD) { bestD = ad; best = i; }
+      c.style.setProperty('--d', Math.max(-2.6, Math.min(2.6, d)).toFixed(3));
+      c.style.setProperty('--ad', Math.min(2.6, ad).toFixed(3));
+    });
+    if (best !== f.focus) setFlowFocus(f, best);
+  }
+  function setFlowFocus(f, i) {
+    f.focus = i;
+    var p = f.items[i];
+    f.cards.forEach(function (c, n) { c.classList.toggle('is-focus', n === i); });
+    Array.prototype.forEach.call(f.section.querySelectorAll('.swatch'), function (s, n) { s.setAttribute('aria-pressed', n === i); });
+    f.section.style.setProperty('--c', p.hex);
+    f.panel.innerHTML = focusHtml(p);
+    var arrows = f.section.querySelectorAll('.arrow');
+    arrows[0].disabled = i === 0; arrows[1].disabled = i === f.cards.length - 1;
+  }
+  function initFlows() {
+    flows = {};
+    Array.prototype.forEach.call(document.querySelectorAll('.flow'), function (el) {
+      var set = el.dataset.flow;
+      var f = { el: el, set: set, cards: Array.prototype.slice.call(el.children), items: J.inSet(set), focus: -1, raf: 0,
+        section: document.getElementById('set-' + set), panel: document.getElementById('focus-' + set) };
+      flows[set] = f;
+      el.addEventListener('scroll', function () {
+        if (!f.raf) f.raf = requestAnimationFrame(function () { f.raf = 0; layoutFlow(f); });
+      }, { passive: true });
+      // mouse: grab the ring and pull it
+      var st = null;
+      el.addEventListener('pointerdown', function (e) {
+        if (e.pointerType !== 'mouse' || e.button) return;
+        st = { x: e.clientX, left: el.scrollLeft, moved: false, id: e.pointerId };
+      });
+      el.addEventListener('pointermove', function (e) {
+        if (!st) return;
+        var dx = e.clientX - st.x;
+        if (!st.moved && Math.abs(dx) < 6) return;
+        if (!st.moved) { st.moved = true; el.classList.add('is-dragging'); try { el.setPointerCapture(st.id); } catch (err) { /* no capture */ } }
+        el.scrollLeft = st.left - dx;
+      });
+      function end() {
+        if (!st) return;
+        var moved = st.moved; st = null;
+        if (!moved) return;
+        centerFlow(f, f.focus);
+        el.classList.remove('is-dragging');
+      }
+      el.addEventListener('pointerup', end);
+      el.addEventListener('pointercancel', end);
+      el.addEventListener('dragstart', function (e) { e.preventDefault(); });
+      centerFlow(f, Math.min(2, f.cards.length - 1), true);
+      layoutFlow(f);
+    });
+  }
+  window.addEventListener('resize', function () {
+    Object.keys(flows).forEach(function (k) { var f = flows[k]; if (f.el.isConnected) { centerFlow(f, f.focus, true); layoutFlow(f); } });
+  });
+
+  /* the list of sets: a photo follows the pointer along the rows */
+  function initFloater() {
+    var box = document.getElementById('floater'), rows = document.getElementById('indexRows');
+    if (!box || !rows || !finePointer) return;
+    var img = box.firstChild;
+    rows.addEventListener('pointermove', function (e) {
+      var row = e.target.closest('.row');
+      if (!row) { box.classList.remove('is-on'); return; }
+      if (img.getAttribute('src') !== row.dataset.preview) img.src = row.dataset.preview;
+      box.style.transform = 'translate3d(' + e.clientX + 'px,' + e.clientY + 'px,0)';
+      box.classList.add('is-on');
+    });
+    rows.addEventListener('pointerleave', function () { box.classList.remove('is-on'); });
+  }
+  function initHome() {
+    initGlobe();
+    initFlows();
+    initFloater();
   }
 
   /* ---------- product page ---------- */
@@ -214,31 +391,51 @@
     var inCart = cart.indexOf(p.sku) !== -1;
     var dest = J.inSet(p.set).map(function (q) {
       var qc = J.CITIES[q.city];
-      return '<a class="dest__item' + (q.stock ? '' : ' dest__item--out') + '" href="' + href(q) + '"' + (q.sku === p.sku ? ' aria-current="true"' : '') + '>' +
+      return '<a class="dest__item' + (q.stock ? '' : ' dest__item--out') + '" href="' + href(q) + '"' + (q.sku === p.sku ? ' aria-current="true"' : '') + ' style="--c:' + q.hex + '">' +
         '<span class="dot" style="background:' + q.hex + '"></span>' +
         '<span><span class="dest__color">' + q.color + '</span><span class="dest__city">' + (q.stock ? qc.ar : 'نفد') + '</span></span>' +
         '<span class="dest__code">' + qc.code + '</span></a>';
     }).join('');
     var thumbs = '<button class="thumb" type="button" aria-pressed="true" data-img="' + J.img(p.model) + '"><img src="' + J.img(p.model) + '" alt="صورة العارضة"></button>' +
-      (p.flat ? '<button class="thumb" type="button" aria-pressed="false" data-img="' + J.img(p.flat) + '"><img src="' + J.img(p.flat) + '" alt="صورة القطعتين" loading="lazy"></button>' : '');
+      (p.flat ? '<button class="thumb thumb--flat" type="button" aria-pressed="false" data-flat="1" data-img="' + J.img(p.flat) + '"><img src="' + J.img(p.flat) + '" alt="صورة القطعتين" loading="lazy"></button>' : '');
     var buy = p.stock
       ? '<button class="btn btn--wide" type="button" data-add="' + p.sku + '">' + (inCart ? 'في السلة، عرض السلة' : 'أضيفي للسلة') + '</button>' +
         '<p class="buy__note">توصيل ' + J.SHIPPING.carrier + ' ' + sar(J.SHIPPING.fee) + '، ومجاني للطلبات من ' + sar(J.SHIPPING.freeFrom) + '.</p>'
       : '<button class="btn btn--wide" type="button" disabled>نفد هذا اللون</button><p class="buy__note">اختاري لون ثاني من نفس الطقم.</p>';
+    var more = J.SET_ORDER.filter(function (k) { return k !== p.set; }).map(function (k) {
+      var q = J.inSet(k)[0];
+      return '<a class="mini" href="' + href(q) + '" style="--c:' + q.hex + '"><span class="mini__img"><img src="' + J.img(q.model) + '" alt="' + alt(q) + '" loading="lazy" width="675" height="900"></span>' +
+        '<span class="mini__name">طقم ' + J.SETS[k].ar + '</span><span class="mini__top">' + J.SETS[k].top + '</span></a>';
+    }).join('');
     return '<section class="pdp"><div class="pdp__in">' +
-      '<div class="gallery"><div class="gallery__main"><img id="mainImg" src="' + J.img(p.model) + '" alt="' + alt(p) + '" width="675" height="900"><span class="card__city">' + c.code + '</span></div>' +
+      '<div class="gallery"><div class="gallery__main" id="zoom"><img id="mainImg" src="' + J.img(p.model) + '" alt="' + alt(p) + '" width="675" height="900">' +
+      '<span class="code code--big">' + c.code + '</span><span class="gallery__coords" dir="ltr">' + coords(c) + '</span></div>' +
       '<div class="gallery__thumbs">' + thumbs + '</div></div>' +
       '<div class="pdp__info"><p class="crumb"><a href="#/">الرئيسية</a> / <a href="#/set/' + p.set + '">طقم ' + s.ar + '</a></p>' +
       '<h1 class="pdp__title">طقم ' + s.ar + '</h1>' +
-      '<p class="pdp__sub">' + p.color + '، مصوّر في ' + c.ar + '</p>' +
+      '<p class="pdp__sub">' + p.color + '، ' + c.ar + '</p>' +
       '<p class="pdp__price">' + priceHtml() + '<span class="save">وفّري ' + sar(J.COMPARE_AT - J.PRICE) + '</span></p>' +
       '<div class="dest"><p class="dest__label">اختاري اللون</p><div class="dest__list">' + dest + '</div></div>' +
       '<div class="buy">' + buy + '</div>' +
       '<dl class="spec"><div><dt>القطع</dt><dd>' + s.top + '، مع بنطلون واسع</dd></div>' +
       '<div><dt>المقاس</dt><dd>فري سايز</dd></div>' +
       '<div><dt>اللون</dt><dd>' + p.color + '</dd></div>' +
-      '<div><dt>السعر</dt><dd>يشمل القطعتين: ' + s.pieces + '</dd></div></dl>' +
-      '</div></div></section>';
+      '<div><dt>السعر</dt><dd>يشمل القطعتين: ' + s.pieces + '</dd></div>' +
+      '<div><dt>الاسترجاع</dt><dd><a href="#/returns">استرجاع أو استبدال خلال ٣٠ يوم</a></dd></div></dl>' +
+      '</div></div>' +
+      '<div class="more"><h2 class="more__title">قصّات ثانية</h2><div class="more__list">' + more + '</div></div></section>';
+  }
+  /* product photo: move the pointer over it to look closer */
+  function initZoom() {
+    var box = document.getElementById('zoom'), img = document.getElementById('mainImg');
+    if (!box || !finePointer) return;
+    box.addEventListener('pointermove', function (e) {
+      if (box.classList.contains('is-flat')) return;
+      var r = box.getBoundingClientRect();
+      img.style.transformOrigin = ((e.clientX - r.left) / r.width * 100).toFixed(1) + '% ' + ((e.clientY - r.top) / r.height * 100).toFixed(1) + '%';
+      box.classList.add('is-zoom');
+    });
+    box.addEventListener('pointerleave', function () { box.classList.remove('is-zoom'); });
   }
 
   /* ---------- checkout ---------- */
@@ -287,11 +484,11 @@
     return (items || []).map(function (i) { return esc(i.name) + '، ' + esc(i.color); }).join(' / ');
   }
   function showResult(html, title) {
-    stopHero();
+    killHome();
     app.innerHTML = html;
     current = 'result';
     document.title = title + ' | JAM';
-    window.scrollTo(0, 0);
+    toTop();
   }
   var shopLink = '<a class="btn" href="#/">رجوع للمتجر</a>';
   var helpLink = '<a class="btn btn--ghost" href="' + WHATSAPP + '" target="_blank" rel="noopener">كلمينا واتساب</a>';
@@ -419,9 +616,22 @@
   }
 
   /* ---------- router ---------- */
-  var current = '';
+  var current = '', introDone = false;
+  // A new page starts at its top at once, without the smooth scroll the rest of the site uses.
+  function toTop() { try { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); } catch (e) { window.scrollTo(0, 0); } }
+  // The page on show, written like the address hash ("#/p/amalfi/pink"). On the live site it mirrors the address bar.
+  // Inside someone else's frame (a preview) the address is left alone and the pages change in place.
+  var path = location.hash || '#/';
+  var framed = false;
+  try { framed = window.top !== window.self; } catch (e) { framed = true; }
+  function go(to) {
+    path = to || '#/';
+    if (!document.getElementById('cart').hidden) closeCart();
+    if (!framed) { try { if (location.hash !== path) location.hash = path; } catch (e) { /* the page still changes below */ } }
+    navigate();
+  }
   function route() {
-    var h = location.hash.replace(/^#\/?/, '');
+    var h = path.replace(/^#\/?/, '');
     var parts = h.split('/').filter(Boolean);
     var view = parts[0] || 'home';
     var wasProduct = current === 'p';
@@ -429,27 +639,35 @@
     Array.prototype.forEach.call(document.querySelectorAll('.top__nav a'), function (a) {
       a.setAttribute('aria-current', (view === 'set' || view === 'p') && a.getAttribute('href') === '#/set/' + parts[1]);
     });
+    document.body.dataset.view = view === 'set' ? 'home' : view;
 
     if (view === 'p') {
       var p = J.bySku(parts[1] + '-' + parts[2]);
-      if (!p) { location.hash = '#/'; return; }
+      if (!p) { go('#/'); return; }
+      killHome();
       setTone(p.hex);
       app.innerHTML = productHtml(p);
+      initZoom();
       document.title = 'طقم ' + J.SETS[p.set].ar + ' ' + p.color + ' | JAM';
-      if (!wasProduct) window.scrollTo(0, 0);
+      if (!wasProduct) toTop();
     } else if (view === 'returns') {
+      killHome();
       app.innerHTML = returnsHtml();
       document.title = 'الاسترجاع والاستبدال | JAM';
-      window.scrollTo(0, 0);
+      toTop();
     } else if (view === 'checkout') {
+      killHome();
       app.innerHTML = checkoutHtml();
       document.title = 'إتمام الطلب | JAM';
-      window.scrollTo(0, 0);
+      toTop();
     } else {
       if (current !== 'home') {
+        killHome();
+        app.classList.toggle('intro', !introDone); introDone = true;
         app.innerHTML = homeHtml();
-        app.dataset.hero = 0;
+        heroAt = 0;
         setTone(J.bySku(J.HERO[0]).hex);
+        initHome();
         document.title = 'JAM | أطقم نسائية متناسقة';
       }
       startHero();
@@ -457,26 +675,58 @@
         var el = document.getElementById('set-' + parts[1]);
         requestAnimationFrame(function () { el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }); });
       } else if (current !== 'home') {
-        window.scrollTo(0, 0);
+        toTop();
+      } else if (view === 'home' && window.scrollY > 40) {
+        window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
       }
       view = 'home';
     }
     current = view;
   }
+  // Moving between pages: the photo the shopper tapped grows into the product photo where the browser can do it.
+  function navigate() {
+    var next = (path.replace(/^#\/?/, '').split('/')[0]) || 'home';
+    var staysHome = current === 'home' && (next === 'home' || next === 'set');
+    if (!document.startViewTransition || reduceMotion || staysHome) { route(); return; }
+    try {
+      var vt = document.startViewTransition(route);
+      vt.ready.catch(function () { /* the page still changed, only the animation was skipped */ });
+      vt.finished.catch(function () {});
+    } catch (e) { route(); }
+  }
 
   /* ---------- events ---------- */
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-hero],[data-add],[data-rm],[data-close],[data-edit],[data-reload],.thumb');
+    // mark the tapped photo so it can grow into the product photo
+    var link = e.target.closest('a[href^="#/p/"]');
+    if (link && !document.getElementById('mainImg')) {
+      Array.prototype.forEach.call(document.querySelectorAll('[data-vt]'), function (n) { n.style.viewTransitionName = ''; n.removeAttribute('data-vt'); });
+      var im = link.querySelector('img.is-on') || link.querySelector('img');
+      if (im) { im.style.viewTransitionName = 'look'; im.setAttribute('data-vt', ''); }
+    }
+    // links inside the shop change the page here, so they also work where the address bar is out of reach
+    var nav = e.target.closest('a[href^="#/"]');
+    if (nav && !e.defaultPrevented && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.button) {
+      e.preventDefault();
+      go(nav.getAttribute('href'));
+      return;
+    }
+    var t = e.target.closest('[data-hero],[data-add],[data-rm],[data-close],[data-edit],[data-reload],[data-flow-go],[data-flow-step],.thumb');
     if (!t) return;
     if (t.hasAttribute('data-reload')) { location.reload(); return; }
     // Back to the delivery form. Sending it again opens a fresh order and drops this hold.
     if (t.hasAttribute('data-edit')) { order = null; store('jam-order', null); route(); return; }
     if (t.dataset.hero !== undefined) { showHero(+t.dataset.hero, true); return; }
+    if (t.dataset.flowGo) { var g = t.dataset.flowGo.split(':'); if (flows[g[0]]) centerFlow(flows[g[0]], +g[1]); return; }
+    if (t.dataset.flowStep) { var s = t.dataset.flowStep.split(':'); if (flows[s[0]]) centerFlow(flows[s[0]], flows[s[0]].focus + (+s[1])); return; }
     if (t.dataset.add) { addToCart(t.dataset.add); t.textContent = 'في السلة، عرض السلة'; return; }
     if (t.dataset.rm) { removeFromCart(t.dataset.rm); return; }
     if (t.hasAttribute('data-close')) { closeCart(); return; }
     if (t.classList.contains('thumb')) {
-      document.getElementById('mainImg').src = t.dataset.img;
+      var main = document.getElementById('mainImg');
+      main.src = t.dataset.img;
+      main.parentNode.classList.toggle('is-flat', !!t.dataset.flat);
+      main.parentNode.classList.remove('is-zoom');
       Array.prototype.forEach.call(document.querySelectorAll('.thumb'), function (b) { b.setAttribute('aria-pressed', b === t); });
     }
   });
@@ -494,10 +744,18 @@
   document.getElementById('cartClose').addEventListener('click', closeCart);
   document.getElementById('scrim').addEventListener('click', closeCart);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !document.getElementById('cart').hidden) closeCart(); });
+  // back and forward buttons, or an address typed by hand
   window.addEventListener('hashchange', function () {
+    if (framed || (location.hash || '#/') === path) return;
+    path = location.hash || '#/';
     if (!document.getElementById('cart').hidden) closeCart();
-    route();
+    navigate();
   });
+  // the header gets a solid back once the page moves under it
+  var topBar = document.getElementById('top');
+  function onScroll() { topBar.classList.toggle('is-stuck', window.scrollY > 12); }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
 
   updateCount();
   // Coming back from the payment page: Paylink adds ?transactionNo=...&orderNumber=... to the address.

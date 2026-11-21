@@ -1,7 +1,29 @@
 # JAM store
 
-Storefront for JAM (women's matching sets). Static site: `index.html`, `css/style.css`, `js/data.js`, `js/app.js`.
+Storefront for JAM (women's matching sets), live at https://sa-jam.com. Static site, no build step, Arabic and right to left.
 
-- Products, prices, stock and shipping rules live in `js/data.js`.
-- Photos live in `img/`. `.github/workflows/photos.yml` copied them from the Salla store; run it again from the Actions tab if a photo is added to `js/data.js`.
-- Checkout is in preview mode: the form validates but no order or payment is created yet.
+## Files
+
+- `index.html`: the page shell (header, footer, cart drawer). Every view is drawn into `<main id="app">`.
+- `css/style.css`: the whole look. The color of the look on show is the CSS variable `--tone`, and it lights the page.
+- `js/data.js`: products, prices, stock, shipping rules, and each city's place on the globe.
+- `js/land.js`: the land dots of the globe, built from Natural Earth 110m land (public domain).
+- `js/globe.js`: the globe on the home page. Drag it to spin; it settles on the nearest city.
+- `js/app.js`: pages (home, product, checkout, returns), cart, and the calls to the shop API.
+- `fonts/`: Kufam (headlines), Alexandria (text), Handjet (airport codes and numbers). All under the SIL Open Font License.
+- `img/`: product photos. `.github/workflows/photos.yml` copied them from the Salla store; run it again from the Actions tab if a photo is added to `js/data.js`.
+- `supabase/`: the shop API (orders, stock, payment check). See `supabase/README.md`.
+
+## Pages
+
+Addresses are hash routes: `#/` home, `#/set/amalfi` jumps to a set, `#/p/amalfi/pink` a product, `#/checkout`, `#/returns`.
+
+## Changing things
+
+- New color or set: add a row to `ROWS` in `js/data.js` (and the set to `SETS` and `SET_ORDER`), add the stock row in Supabase, add the photos.
+- Price or shipping: `PRICE`, `COMPARE_AT`, `SHIPPING` in `js/data.js`. The shop API has its own copy of the prices and must match.
+- After any change to a CSS or JS file, raise the `?v=` number on its tag in `index.html` so browsers fetch the new file.
+
+## Checkout
+
+Checkout only takes payments when the shop API says payments are on. Until then the form validates and shows a preview notice. While the API is in test mode, checkout opens only for a visitor who came in through `/?test=1`.
