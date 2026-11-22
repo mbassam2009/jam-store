@@ -15,7 +15,7 @@
   var globe = null; // the spinning globe on the home page, while that page is open
   function setTone(hex) { document.documentElement.style.setProperty('--tone', hex); if (globe) globe.setTone(hex); }
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  var WHATSAPP = 'https://wa.me/966558166661';
+  var WHATSAPP = 'https://wa.me/966504227762';
 
   /* ---------- shop API (orders, stock, payment check) ---------- */
   var configured = !!J.API;
