@@ -4,6 +4,7 @@ Orders, stock and payment checks for https://sa-jam.com. Runs on Supabase.
 
 - `migrations/001_shop.sql`: tables and the order logic (hold stock for 20 minutes, release unpaid holds, close paid orders).
 - `migrations/002_seed_products.sql`: starting stock.
+- `migrations/003_versailles_prices_shipping.sql`: the Versailles sets, sets at 379 SAR, free shipping from 700 SAR.
 - `functions/shop/index.ts`: the API the site talks to. Deploy with JWT verification off, because shoppers call it without a Supabase login.
 
 ## Payments: Paylink

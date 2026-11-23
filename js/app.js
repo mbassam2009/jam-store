@@ -8,7 +8,9 @@
   var heroTimer = null;
 
   function sar(n) { return nf.format(n) + ' ر.س'; }
-  function priceHtml() { return '<span class="price">' + sar(J.PRICE) + '<s>' + nf.format(J.COMPARE_AT) + '</s></span>'; }
+  function priceHtml(p) { return '<span class="price">' + sar(J.price(p)) + '<s>' + nf.format(J.compareAt(p)) + '</s></span>'; }
+  // The chip beside the price: the set's own offer, or what the shopper saves.
+  function saveHtml(p) { return '<span class="save">' + (J.SETS[p.set].offer || 'وفّري ' + sar(J.compareAt(p) - J.price(p))) + '</span>'; }
   function setName(p) { return 'طقم ' + J.SETS[p.set].ar; }
   function alt(p) { return setName(p) + ' ' + p.color + ' في ' + J.CITIES[p.city].ar; }
   function href(p) { return '#/p/' + p.set + '/' + p.key; }
@@ -60,7 +62,7 @@
   try { cart = JSON.parse(localStorage.getItem('jam-cart') || '[]').filter(function (s) { var p = J.bySku(s); return p && p.stock > 0; }); } catch (e) { cart = []; }
   function saveCart() { try { localStorage.setItem('jam-cart', JSON.stringify(cart)); } catch (e) { /* storage unavailable: cart lives for this visit */ } }
   function totals() {
-    var sub = cart.length * J.PRICE;
+    var sub = cart.reduce(function (sum, sku) { return sum + J.price(J.bySku(sku)); }, 0);
     var ship = sub === 0 || sub >= J.SHIPPING.freeFrom ? 0 : J.SHIPPING.fee;
     return { sub: sub, ship: ship, total: sub + ship, left: Math.max(0, J.SHIPPING.freeFrom - sub) };
   }
@@ -95,7 +97,7 @@
       return '<div class="line"><img src="' + J.img(p.model) + '" alt="' + alt(p) + '" loading="lazy">' +
         '<div><div class="line__name">' + setName(p) + '</div><div class="line__color">' + p.color + '، فري سايز</div>' +
         (removable ? '<button class="line__rm" type="button" data-rm="' + sku + '">حذف من السلة</button>' : '') + '</div>' +
-        '<div class="price">' + sar(J.PRICE) + '</div></div>';
+        '<div class="price">' + sar(J.price(p)) + '</div></div>';
     }).join('');
   }
   function renderCart() {
@@ -154,7 +156,7 @@
     var c = J.CITIES[p.city], inCart = cart.indexOf(p.sku) !== -1;
     return '<div class="focus__info"><p class="focus__color">' + p.color + '</p>' +
       '<p class="focus__city">' + c.ar + '<span class="code-inline">' + c.code + '</span></p></div>' +
-      '<div class="focus__buy">' + (p.stock ? priceHtml() : '<span class="price price--out">نفد هذا اللون</span>') +
+      '<div class="focus__buy">' + (p.stock ? priceHtml(p) + (J.SETS[p.set].offer ? saveHtml(p) : '') : '<span class="price price--out">نفد هذا اللون</span>') +
       (p.stock ? '<button class="btn" type="button" data-add="' + p.sku + '">' + (inCart ? 'في السلة، عرض السلة' : 'أضيفي للسلة') + '</button>' : '') +
       '<a class="btn btn--ghost" href="' + href(p) + '">تفاصيل الطقم</a></div>';
   }
@@ -174,8 +176,8 @@
       var dots = list.map(function (p) { return '<span class="dot' + (p.stock ? '' : ' dot--out') + '" style="background:' + p.hex + '"></span>'; }).join('');
       return '<a class="row" href="#/set/' + k + '" data-preview="' + J.img(list[0].model) + '" style="--c:' + list[0].hex + '">' +
         '<span class="row__name">' + s.ar + '<small>' + s.en + '</small></span>' +
-        '<span class="row__top">' + s.top + ' مع بنطلون واسع</span><span class="row__dots" aria-hidden="true">' + dots + '</span>' +
-        '<span class="row__price">' + nf.format(J.PRICE) + '<small>ر.س</small></span></a>';
+        '<span class="row__top">' + s.line + '</span><span class="row__dots" aria-hidden="true">' + dots + '</span>' +
+        '<span class="row__price">' + nf.format(J.price(list[0])) + '<small>ر.س</small></span></a>';
     }).join('');
     var sets = J.SET_ORDER.map(function (k) {
       var s = J.SETS[k], list = J.inSet(k);
@@ -183,7 +185,7 @@
         return '<button class="swatch' + (p.stock ? '' : ' swatch--out') + '" type="button" data-flow-go="' + k + ':' + i + '" aria-pressed="false" aria-label="' + p.color + (p.stock ? '' : '، نفد') + '" style="--c:' + p.hex + '"></button>';
       }).join('');
       return '<section class="set" id="set-' + k + '" data-set="' + k + '">' +
-        '<div class="set__head"><div><h2 class="set__name">طقم ' + s.ar + '</h2><p class="set__top">' + s.top + ' مع بنطلون واسع</p></div>' +
+        '<div class="set__head"><div><h2 class="set__name">طقم ' + s.ar + '</h2><p class="set__top">' + s.line + '</p></div>' +
         '<div class="set__nav"><button class="arrow" type="button" data-flow-step="' + k + ':-1" aria-label="اللون السابق">' + ICON_PREV + '</button>' +
         '<button class="arrow" type="button" data-flow-step="' + k + ':1" aria-label="اللون التالي">' + ICON_NEXT + '</button></div></div>' +
         '<div class="flow" data-flow="' + k + '">' + list.map(lookHtml).join('') + '</div>' +
@@ -192,8 +194,8 @@
     }).join('');
     return '<section class="hero"><div class="hero__in">' +
       '<div class="hero__text"><h1 class="hero__title"><span class="ln"><span>طقم واحد.</span></span> <span class="ln"><span>ست مدن.</span></span></h1>' +
-      '<p class="hero__lede">بلوزة وبنطلون واسع بلون واحد، ولكل لون مدينة. لفّي الكرة واختاري مدينتك.</p>' +
-      '<div class="hero__cta"><a class="btn" href="#/set/amalfi">تسوّقي الأطقم</a><span class="hero__price">' + sar(J.PRICE) + ' للطقم كامل</span></div>' +
+      '<p class="hero__lede">أطقم من قطعتين، ولكل لون مدينة. لفّي الكرة واختاري مدينتك.</p>' +
+      '<div class="hero__cta"><a class="btn" href="#/set/' + J.SET_ORDER[0] + '">تسوّقي الأطقم</a><span class="hero__price">الأطقم من ' + sar(J.fromPrice()) + '</span></div>' +
       '<div class="gates" role="group" aria-label="المدن">' + gates + '</div></div>' +
       '<div class="stage" id="stage"><div class="orbit" id="orbit"><canvas class="globe" id="globe" aria-hidden="true"></canvas></div>' +
       '<div class="grab" id="grab" aria-hidden="true"></div>' +
@@ -201,14 +203,14 @@
       '<p class="readout" id="readout" dir="ltr" aria-hidden="true">' + fc.code + ' ' + coords(fc) + '</p>' +
       '<a class="portal" id="heroTag" href="' + href(first) + '"><span class="portal__img" id="portalImg">' +
       '<img class="is-on" id="heroA" src="' + J.img(first.model) + '" alt="' + alt(first) + '" width="675" height="900"><img id="heroB" alt="" width="675" height="900"></span>' +
-      '<span class="portal__meta" id="heroMeta"><strong>' + setName(first) + '</strong><span>' + first.color + '، ' + sar(J.PRICE) + '</span></span></a>' +
+      '<span class="portal__meta" id="heroMeta"><strong>' + setName(first) + '</strong><span>' + first.color + '، ' + sar(J.price(first)) + '</span></span></a>' +
       '<p class="stage__hint" id="stageHint">اسحبي الكرة</p></div>' +
       '</div></section>' +
-      '<section class="index"><div class="index__in"><h2 class="index__title">أربع قصّات، وكل طقم بسعر واحد.</h2><div class="index__rows" id="indexRows">' + rows + '</div></div>' +
+      '<section class="index"><div class="index__in"><h2 class="index__title">عبايات المخمل أول، وبعدها أربع قصّات.</h2><div class="index__rows" id="indexRows">' + rows + '</div></div>' +
       '<div class="floater" id="floater" aria-hidden="true"><img alt=""></div></section>' +
       sets +
       '<section class="facts"><dl class="facts__in">' +
-      '<div><dt>طقم كامل</dt><dd>السعر يشمل البلوزة والبنطلون</dd></div>' +
+      '<div><dt>طقم كامل</dt><dd>السعر يشمل القطعتين</dd></div>' +
       '<div><dt>فري سايز</dt><dd>قصّة واسعة ومريحة</dd></div>' +
       '<div><dt>توصيل أرامكس</dt><dd>' + sar(J.SHIPPING.fee) + '، ومجاني من ' + sar(J.SHIPPING.freeFrom) + '</dd></div>' +
       '<div><dt>واتساب</dt><dd>اسألينا عن أي طقم قبل الطلب</dd></div></dl></section>';
@@ -244,7 +246,7 @@
       next.classList.add('is-on'); prev.classList.remove('is-on');
       setTone(p.hex);
       document.getElementById('heroTag').href = href(p);
-      document.getElementById('heroMeta').innerHTML = '<strong>' + setName(p) + '</strong><span>' + p.color + '، ' + sar(J.PRICE) + '</span>';
+      document.getElementById('heroMeta').innerHTML = '<strong>' + setName(p) + '</strong><span>' + p.color + '، ' + sar(J.price(p)) + '</span>';
     };
     pre.src = url;
     Array.prototype.forEach.call(document.querySelectorAll('.gate'), function (g, n) { g.setAttribute('aria-pressed', n === i); });
@@ -357,7 +359,7 @@
       el.addEventListener('pointerup', end);
       el.addEventListener('pointercancel', end);
       el.addEventListener('dragstart', function (e) { e.preventDefault(); });
-      centerFlow(f, Math.min(2, f.cards.length - 1), true);
+      centerFlow(f, Math.min(2, Math.floor((f.cards.length - 1) / 2)), true);
       layoutFlow(f);
     });
   }
@@ -396,8 +398,12 @@
         '<span><span class="dest__color">' + q.color + '</span><span class="dest__city">' + (q.stock ? qc.ar : 'نفد') + '</span></span>' +
         '<span class="dest__code">' + qc.code + '</span></a>';
     }).join('');
-    var thumbs = '<button class="thumb" type="button" aria-pressed="true" data-img="' + J.img(p.model) + '"><img src="' + J.img(p.model) + '" alt="صورة العارضة"></button>' +
-      (p.flat ? '<button class="thumb thumb--flat" type="button" aria-pressed="false" data-flat="1" data-img="' + J.img(p.flat) + '"><img src="' + J.img(p.flat) + '" alt="صورة القطعتين" loading="lazy"></button>' : '');
+    var labels = s.shots || [];
+    var thumbs = '<button class="thumb" type="button" aria-pressed="true" data-img="' + J.img(p.model) + '"><img src="' + J.img(p.model) + '" alt="' + (labels[0] || 'صورة العارضة') + '"></button>' +
+      (p.flat ? '<button class="thumb thumb--flat" type="button" aria-pressed="false" data-flat="1" data-img="' + J.img(p.flat) + '"><img src="' + J.img(p.flat) + '" alt="صورة القطعتين" loading="lazy"></button>' : '') +
+      p.more.map(function (id, i) {
+        return '<button class="thumb" type="button" aria-pressed="false" data-img="' + J.img(id) + '"><img src="' + J.img(id) + '" alt="' + (labels[i + 1] || 'صورة إضافية') + '" loading="lazy"></button>';
+      }).join('');
     var buy = p.stock
       ? '<button class="btn btn--wide" type="button" data-add="' + p.sku + '">' + (inCart ? 'في السلة، عرض السلة' : 'أضيفي للسلة') + '</button>' +
         '<p class="buy__note">توصيل ' + J.SHIPPING.carrier + ' ' + sar(J.SHIPPING.fee) + '، ومجاني للطلبات من ' + sar(J.SHIPPING.freeFrom) + '.</p>'
@@ -414,10 +420,10 @@
       '<div class="pdp__info"><p class="crumb"><a href="#/">الرئيسية</a> / <a href="#/set/' + p.set + '">طقم ' + s.ar + '</a></p>' +
       '<h1 class="pdp__title">طقم ' + s.ar + '</h1>' +
       '<p class="pdp__sub">' + p.color + '، ' + c.ar + '</p>' +
-      '<p class="pdp__price">' + priceHtml() + '<span class="save">وفّري ' + sar(J.COMPARE_AT - J.PRICE) + '</span></p>' +
+      '<p class="pdp__price">' + priceHtml(p) + saveHtml(p) + '</p>' +
       '<div class="dest"><p class="dest__label">اختاري اللون</p><div class="dest__list">' + dest + '</div></div>' +
       '<div class="buy">' + buy + '</div>' +
-      '<dl class="spec"><div><dt>القطع</dt><dd>' + s.top + '، مع بنطلون واسع</dd></div>' +
+      '<dl class="spec"><div><dt>القطع</dt><dd>' + s.line + '</dd></div>' +
       '<div><dt>المقاس</dt><dd>فري سايز</dd></div>' +
       '<div><dt>اللون</dt><dd>' + p.color + '</dd></div>' +
       '<div><dt>السعر</dt><dd>يشمل القطعتين: ' + s.pieces + '</dd></div>' +

@@ -10,9 +10,10 @@ window.JAM = (function () {
   // https://sa-jam.com/?test=1, so nobody can "buy" stock with a test card. No payment keys live in this repo.
   var API = 'https://divkgblwymgiyknynyen.supabase.co/functions/v1/shop';
 
-  var PRICE = 340;
+  // Price of a set unless the set carries its own (see SETS). COMPARE_AT is the crossed-out price.
+  var PRICE = 379;
   var COMPARE_AT = 499;
-  var SHIPPING = { carrier: 'أرامكس', fee: 29, freeFrom: 400 };
+  var SHIPPING = { carrier: 'أرامكس', fee: 29, freeFrom: 700 };
 
   // lat/lon place each city on the globe.
   var CITIES = {
@@ -24,16 +25,29 @@ window.JAM = (function () {
     sydney:   { ar: 'سيدني',    code: 'SYD', lat: -33.87, lon: 151.21 }
   };
 
+  // top: the first piece. line: both pieces, as shown under the set's name. pieces: what the price covers.
+  // price, compareAt and offer are only set where a set differs from PRICE and COMPARE_AT above.
+  // shots: labels for the photos of a look, in the order model photo, then the photos in the row's last column.
+  var PANTS = ' مع بنطلون واسع';
   var SETS = {
+    versailles: { ar: 'فرساي', en: 'Versailles', top: 'عباية مخمل مفتوحة', line: 'عباية مخمل مفتوحة مع فستان منقوش', pieces: 'العباية والفستان',
+                  price: 647, compareAt: 899, offer: 'خصم الافتتاح ٢٨٪', shots: ['صورة الطقم', 'صورة الفستان', 'صورة العباية'] },
     amalfi:  { ar: 'أمالفي',   en: 'Amalfi',  top: 'قميص بياقة وأكمام قصيرة',            pieces: 'القميص والبنطلون' },
     capri:   { ar: 'كابري',    en: 'Capri',   top: 'بلوزة بياقة V وأكمام قصيرة',          pieces: 'البلوزة والبنطلون' },
     suzhou:  { ar: 'سوجو',     en: 'Suzhou',  top: 'بلوزة بأكمام طويلة وأزرار صينية',     pieces: 'البلوزة والبنطلون' },
     riviera: { ar: 'ريفييرا',  en: 'Riviera', top: 'قميص بأكمام قصيرة وقصّة مريحة',       pieces: 'القميص والبنطلون' }
   };
-  var SET_ORDER = ['amalfi', 'capri', 'suzhou', 'riviera'];
+  Object.keys(SETS).forEach(function (k) { if (!SETS[k].line) SETS[k].line = SETS[k].top + PANTS; });
+  // The order the sets appear in everywhere: the list, the sections, the menu.
+  var SET_ORDER = ['versailles', 'amalfi', 'capri', 'suzhou', 'riviera'];
 
-  // [sallaId, set, key, colorAr, hex, city, modelImg, flatImg, stock]
+  // [sallaId, set, key, colorAr, hex, city, modelImg, flatImg, stock, morePhotos]
+  // Versailles photos are files in img/ under their own names (not copied from Salla): the set, then the dress, then the abaya.
   var ROWS = [
+    [0, 'versailles', 'mustard', 'خردلي', '#D9A531', 'paris',    'versailles-mustard-set', null, 1, ['versailles-mustard-dress', 'versailles-mustard-abaya']],
+    [0, 'versailles', 'copper',  'نحاسي', '#C27A3A', 'istanbul', 'versailles-copper-set',  null, 1, ['versailles-copper-dress',  'versailles-copper-abaya']],
+    [0, 'versailles', 'olive',   'زيتي',  '#6E8B45', 'london',   'versailles-olive-set',   null, 1, ['versailles-olive-dress',   'versailles-olive-abaya']],
+
     [621341529,  'amalfi',  'pink',       'وردي',         '#E88DB4', 'sydney',   'd11874d1-84f4-42a4-9dd8-678c914a0441', 'f9e4cb59-cbd0-457a-9d37-ef668efe31a1', 1],
     [1120560981, 'amalfi',  'sage',       'أخضر ميرمية',  '#9CAF94', 'nyc',      '970225a8-97ef-41ec-8564-5bbf990f7456', 'ceb051d7-9be4-483c-beb2-a746969d4797', 1],
     [1039846783, 'amalfi',  'terracotta', 'تيراكوتا',     '#C4532F', 'paris',    'd3fa837a-0d42-458c-8e00-a65e74581eab', 'e8d0d069-2df4-494c-b8e3-3a20b68b53e3', 1],
@@ -63,17 +77,21 @@ window.JAM = (function () {
   ];
 
   var PRODUCTS = ROWS.map(function (r) {
-    return { id: r[0], set: r[1], key: r[2], sku: r[1] + '-' + r[2], color: r[3], hex: r[4], city: r[5], model: r[6], flat: r[7], stock: r[8] };
+    return { id: r[0], set: r[1], key: r[2], sku: r[1] + '-' + r[2], color: r[3], hex: r[4], city: r[5], model: r[6], flat: r[7], stock: r[8], more: r[9] || [] };
   });
 
   // One look per city for the opening sequence, all in stock.
-  var HERO = ['amalfi-terracotta', 'suzhou-wine', 'capri-olive', 'capri-denim', 'amalfi-navy', 'amalfi-pink'];
+  var HERO = ['versailles-mustard', 'suzhou-wine', 'capri-olive', 'capri-denim', 'amalfi-navy', 'amalfi-pink'];
 
   return {
     API: API,
     PRICE: PRICE, COMPARE_AT: COMPARE_AT, SHIPPING: SHIPPING,
     CITIES: CITIES, SETS: SETS, SET_ORDER: SET_ORDER, PRODUCTS: PRODUCTS, HERO: HERO,
     img: function (id) { return IMG_BASE + id + IMG_SUFFIX; },
+    price: function (p) { return SETS[p.set].price || PRICE; },
+    compareAt: function (p) { return SETS[p.set].compareAt || COMPARE_AT; },
+    // the lowest price in the shop, for "from ..." lines
+    fromPrice: function () { return Math.min.apply(null, SET_ORDER.map(function (k) { return SETS[k].price || PRICE; })); },
     bySku: function (sku) { return PRODUCTS.find(function (p) { return p.sku === sku; }); },
     inSet: function (set) {
       return PRODUCTS.filter(function (p) { return p.set === set; })
