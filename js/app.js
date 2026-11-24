@@ -65,7 +65,8 @@
   function saveCart() { try { localStorage.setItem('jam-cart', JSON.stringify(cart)); } catch (e) { /* storage unavailable: cart lives for this visit */ } }
   function totals() {
     var sub = cart.reduce(function (sum, sku) { return sum + J.price(J.bySku(sku)); }, 0);
-    var ship = sub === 0 || sub >= J.SHIPPING.freeFrom ? 0 : J.SHIPPING.fee;
+    var noShip = cart.length > 0 && cart.every(function (sku) { return J.SETS[J.bySku(sku).set].noShip; });
+    var ship = sub === 0 || noShip || sub >= J.SHIPPING.freeFrom ? 0 : J.SHIPPING.fee;
     return { sub: sub, ship: ship, total: sub + ship, left: Math.max(0, J.SHIPPING.freeFrom - sub) };
   }
   function updateCount() {
