@@ -490,11 +490,21 @@
       var css = document.createElement('link');
       css.rel = 'stylesheet'; css.href = 'https://cdn.moyasar.com/mpf/1.15.0/moyasar.css';
       document.head.appendChild(css);
-      var js = document.createElement('script');
-      js.src = 'https://cdn.moyasar.com/mpf/1.15.0/moyasar.js';
-      js.onload = resolve;
-      js.onerror = function () { moyasarAssets = null; reject(new Error('moyasar')); };
-      document.head.appendChild(js);
+      function loadForm() {
+        var js = document.createElement('script');
+        js.src = 'https://cdn.moyasar.com/mpf/1.15.0/moyasar.js';
+        js.onload = resolve;
+        js.onerror = function () { moyasarAssets = null; reject(new Error('moyasar')); };
+        document.head.appendChild(js);
+      }
+      // Apple's Apple Pay JS SDK comes first. It lets Chrome, Edge and Firefox (also on Windows) show Apple Pay
+      // as a code to scan with an iPhone. If it fails to load, card payments still work.
+      var apple = document.createElement('script');
+      apple.src = 'https://applepay.cdn-apple.com/jsapi/1.latest/apple-pay-sdk.js';
+      apple.crossOrigin = 'anonymous';
+      apple.onload = loadForm;
+      apple.onerror = loadForm;
+      document.head.appendChild(apple);
     });
     return moyasarAssets;
   }
@@ -510,8 +520,13 @@
         description: 'طلب JAM رقم ' + order.number,
         publishable_api_key: payKey,
         callback_url: location.origin + location.pathname,
-        methods: ['creditcard'],
+        methods: ['applepay', 'creditcard'],
         supported_networks: ['mada', 'visa', 'mastercard'],
+        apple_pay: {
+          country: 'SA',
+          label: 'JAM',
+          validate_merchant_url: 'https://api.moyasar.com/v1/applepay/initiate'
+        },
         language: 'ar',
         fixed_width: false,
         metadata: { order_id: order.id, order_number: String(order.number) },
