@@ -21,8 +21,10 @@
 
   /* ---------- shop API (orders, stock, payment check) ---------- */
   var configured = !!J.API;
-  var paymentsOn = false; // turns true once the shop API says it can take payments
-  // Test mode (the shop API says which): checkout is only for someone who opened the site with ?test=1 in this tab.
+  var paymentsOn = false; // turns true once the shop API says it can verify payments
+  // Test keys: checkout is only for someone who opened the site with ?test=1 in this tab.
+  // The shop API says which Moyasar key to use and whether it is live. In test mode checkout is only for ?test=1 visitors.
+  var payKey = '';
   var testMode = true;
   var tester = false;
   try {
@@ -46,7 +48,7 @@
   var order = stored('jam-order');
   var customer = stored('jam-customer') || {};
   function orderOpen() {
-    return !!order && !!order.pay_url && new Date(order.expires_at).getTime() - Date.now() > 60000 &&
+    return !!order && new Date(order.expires_at).getTime() - Date.now() > 60000 &&
       order.skus.slice().sort().join() === cart.slice().sort().join();
   }
   function setPreviewBar() {
@@ -475,11 +477,52 @@
       '<p class="pay__to">التوصيل إلى: ' + esc(customer.name) + '، ' + esc(customer.city) + '، ' + esc(customer.district) + '، ' + esc(customer.address) + '. ' +
       '<button class="link" type="button" data-edit>تعديل البيانات</button></p>' +
       '<p class="pay__hold">حجزنا لك القطع ٢٠ دقيقة لين تكملين الدفع.</p>' +
-      '<div id="payForm"><iframe id="payFrame" title="صفحة الدفع" src="' + esc(order.frame_url || order.pay_url) + '" allow="payment *"></iframe></div>' +
-      '<p class="pay__alt">ما ظهر نموذج الدفع؟ <a href="' + esc(order.pay_url) + '">افتحيه في صفحة كاملة</a></p>' +
+      '<div id="payForm"><div class="mysr-form"></div></div>' +
       '<div id="payNotice" class="notice" role="status" hidden></div>' +
       '</div>' +
       '<aside class="summary" aria-label="ملخص الطلب"><h2>طلبك</h2>' + linesHtml(false) + sumsHtml() + '</aside></section>';
+  }
+  var moyasarAssets = null;
+  function loadMoyasar() {
+    if (moyasarAssets) return moyasarAssets;
+    moyasarAssets = new Promise(function (resolve, reject) {
+      var css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = 'https://cdn.moyasar.com/mpf/1.15.0/moyasar.css';
+      document.head.appendChild(css);
+      var js = document.createElement('script');
+      js.src = 'https://cdn.moyasar.com/mpf/1.15.0/moyasar.js';
+      js.onload = resolve;
+      js.onerror = function () { moyasarAssets = null; reject(new Error('moyasar')); };
+      document.head.appendChild(js);
+    });
+    return moyasarAssets;
+  }
+  function mountPayment() {
+    var forOrder = order.id;
+    loadMoyasar().then(function () {
+      if (!order || order.id !== forOrder || !document.getElementById('payForm')) return;
+      window.Moyasar.init({
+        // Moyasar renames the element it mounts on, so it gets its own inner div and a class selector.
+        element: '.mysr-form',
+        amount: order.total,
+        currency: 'SAR',
+        description: 'طلب JAM رقم ' + order.number,
+        publishable_api_key: payKey,
+        callback_url: location.origin + location.pathname,
+        methods: ['creditcard'],
+        supported_networks: ['mada', 'visa', 'mastercard'],
+        language: 'ar',
+        fixed_width: false,
+        metadata: { order_id: order.id, order_number: String(order.number) },
+        // Tell the shop which payment belongs to this order before the bank page opens.
+        on_completed: function (payment) {
+          return api('/orders/' + forOrder + '/payment', { payment_id: payment.id }).catch(function () {});
+        }
+      });
+    }).catch(function () {
+      var n = document.getElementById('payNotice');
+      if (n) { n.hidden = false; n.textContent = 'ما قدرنا نفتح نموذج الدفع. تأكدي من الاتصال وحدّثي الصفحة.'; }
+    });
   }
   function resultHtml(title, lines, actions) {
     return '<section class="co co--result"><h1>' + title + '</h1><div class="result">' +
@@ -500,7 +543,7 @@
   var helpLink = '<a class="btn btn--ghost" href="' + WHATSAPP + '" target="_blank" rel="noopener">كلمينا واتساب</a>';
   function confirmPayment(paymentId, tries) {
     showResult(resultHtml('نتأكد من الدفع', ['لحظة، لا تقفلين الصفحة.'], ''), 'نتأكد من الدفع');
-    api('/confirm', { transaction_no: paymentId }).then(function (r) {
+    api('/confirm', { payment_id: paymentId }).then(function (r) {
       var d = r.data || {}, num = d.number ? String(d.number) : '';
       if (d.status === 'paid') {
         cart = []; saveCart(); updateCount();
@@ -547,8 +590,7 @@
     api('/orders', { items: cart, customer: customer }).then(function (r) {
       var d = r.data || {};
       if (r.ok && d.id) {
-        order = { id: d.id, number: d.number, total: d.total, expires_at: d.expires_at, skus: cart.slice(),
-          transaction_no: d.transaction_no, pay_url: d.pay_url, frame_url: d.frame_url };
+        order = { id: d.id, number: d.number, total: d.total, expires_at: d.expires_at, skus: cart.slice() };
         store('jam-order', order);
         route();
       } else if (d.error === 'sold_out') {
@@ -560,8 +602,6 @@
         saveCart(); updateCount(); route();
         var n = document.getElementById('coNotice') || document.getElementById('emptyNotice');
         if (n) { n.hidden = false; n.textContent = 'انباع قبل شوي: ' + names.join('، ') + '. شلناه من سلتك.'; }
-      } else if (d.error === 'payment_unavailable') {
-        say('بوابة الدفع ما ردّت. ما انحجز شي ولا انخصم شي، جربي بعد دقيقة.');
       } else if (d.error === 'too_many') {
         say('عندك أكثر من طلب مفتوح. كمّلي دفع واحد منها أو جربي بعد ٢٠ دقيقة.');
       } else {
@@ -573,9 +613,11 @@
     if (!configured) return;
     api('/stock').then(function (r) {
       if (!r.ok || !r.data.stock) return;
+      payKey = r.data.pay_key || '';
       testMode = r.data.mode !== 'live';
-      var turnedOn = !paymentsOn && !!r.data.payments && mayPay();
-      paymentsOn = !!r.data.payments && mayPay();
+      var on = !!r.data.payments && !!payKey && mayPay();
+      var turnedOn = !paymentsOn && on;
+      paymentsOn = on;
       setPreviewBar();
       // Reloaded in the middle of paying: bring the payment step back.
       if (turnedOn && current === 'checkout' && orderOpen() && !document.getElementById('payForm')) route();
@@ -666,6 +708,7 @@
       app.innerHTML = checkoutHtml();
       document.title = 'إتمام الطلب | JAM';
       toTop();
+      if (document.getElementById('payForm')) mountPayment();
     } else {
       if (current !== 'home') {
         killHome();
@@ -764,13 +807,10 @@
   onScroll();
 
   updateCount();
-  // Coming back from the payment page: Paylink adds ?transactionNo=...&orderNumber=... to the address.
-  var returned = new URLSearchParams(location.search).get('transactionNo');
-  if (returned && window.top !== window.self) {
-    // We are inside the payment frame. Hand the whole page the result instead of showing the shop inside itself.
-    try { window.top.location.replace(location.href); } catch (e) { window.open(location.href, '_top'); }
-  } else if (returned && configured) {
-    paymentsOn = true;
+  // Coming back from the bank page: Moyasar adds ?id=<payment> to the address.
+  var returned = new URLSearchParams(location.search).get('id');
+  if (returned && configured) {
+    paymentsOn = true; setPreviewBar();
     history.replaceState(null, '', location.pathname);
     confirmPayment(returned, 0);
   } else {

@@ -4,10 +4,9 @@ window.JAM = (function () {
   var IMG_BASE = 'img/';
   var IMG_SUFFIX = '.webp';
 
-  // Orders, stock and payments run through the shop function (supabase/functions/shop). Payments are by Paylink.
-  // With API empty the site is a preview and charges nothing.
-  // While the shop is on Paylink's test system, checkout only opens for a visitor who came in through
-  // https://sa-jam.com/?test=1, so nobody can "buy" stock with a test card. No payment keys live in this repo.
+  // Orders, stock and payments run through the shop function (supabase/functions/shop). Payments are by Moyasar.
+  // The function hands the site Moyasar's publishable key and says whether it is live. No payment keys live in this repo.
+  // While the keys are test keys, checkout only opens for a visitor who came in through https://sa-jam.com/?test=1.
   var API = 'https://divkgblwymgiyknynyen.supabase.co/functions/v1/shop';
 
   // Price of a set unless the set carries its own (see SETS). COMPARE_AT is the crossed-out price.

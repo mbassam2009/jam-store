@@ -26,4 +26,4 @@ Addresses are hash routes: `#/` home, `#/set/amalfi` jumps to a set, `#/p/amalfi
 
 ## Checkout
 
-Checkout only takes payments when the shop API says payments are on. Until then the form validates and shows a preview notice. While the API is in test mode, checkout opens only for a visitor who came in through `/?test=1`.
+Payments are by Moyasar (mada, Visa, Mastercard). Checkout only takes payments when the shop API says payments are on. Until then the form validates and shows a preview notice. While the API is in test mode, checkout opens only for a visitor who came in through `/?test=1`. Live mode starts by itself once the live Moyasar keys are saved in Supabase (see `supabase/README.md`).

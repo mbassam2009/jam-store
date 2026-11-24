@@ -551,10 +551,9 @@ ul { list-style: none; }
 .pay__to { line-height: 1.8; }
 .pay__hold { color: var(--mist); font-size: .95rem; }
 .link { font: inherit; font-weight: 600; color: var(--star); background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: .2em; cursor: pointer; }
-#payForm { background: #fff; border-radius: 22px; overflow: hidden; }
-#payFrame { display: block; width: 100%; height: 44rem; border: 0; background: #fff; }
-.pay__alt { font-size: .92rem; color: var(--mist); }
-.pay__alt a { color: var(--star); font-weight: 600; text-underline-offset: .2em; }
+.link:focus-visible { outline: 2px solid var(--star); outline-offset: 2px; }
+#payForm { background: #fff; color: #101B33; border-radius: 22px; padding: 1.2rem; min-height: 14rem; direction: rtl; }
+#payForm .mysr-form:empty::before { content: 'نجهّز نموذج الدفع…'; color: #5b6478; }
 .co--result { grid-template-columns: 1fr; max-width: 44rem; }
 .result { display: grid; gap: .9rem; font-size: 1.08rem; line-height: 1.8; }
 .result strong { font-family: var(--board); font-size: 1.5em; letter-spacing: .06em; direction: ltr; unicode-bidi: isolate; color: var(--glow); }
