@@ -34,11 +34,7 @@ window.JAM = (function () {
     amalfi:  { ar: 'أمالفي',   en: 'Amalfi',  top: 'قميص بياقة وأكمام قصيرة',            pieces: 'القميص والبنطلون' },
     capri:   { ar: 'كابري',    en: 'Capri',   top: 'بلوزة بياقة V وأكمام قصيرة',          pieces: 'البلوزة والبنطلون' },
     suzhou:  { ar: 'سوجو',     en: 'Suzhou',  top: 'بلوزة بأكمام طويلة وأزرار صينية',     pieces: 'البلوزة والبنطلون' },
-    riviera: { ar: 'ريفييرا',  en: 'Riviera', top: 'قميص بأكمام قصيرة وقصّة مريحة',       pieces: 'القميص والبنطلون' },
-    // Hidden 1 SAR item for testing real payments. Not in SET_ORDER, so it shows nowhere; open it at #/p/test/pay.
-    // noShip: no shipping charge when the cart holds only this. Delete it (here and in Supabase) when testing is over.
-    test:    { ar: 'تجربة الدفع', en: 'Test', top: 'منتج لتجربة الدفع، ما يُشحن', line: 'منتج لتجربة الدفع، ما يُشحن', pieces: 'لا شيء',
-               price: 1, compareAt: 1, offer: 'للتجربة فقط', noShip: true }
+    riviera: { ar: 'ريفييرا',  en: 'Riviera', top: 'قميص بأكمام قصيرة وقصّة مريحة',       pieces: 'القميص والبنطلون' }
   };
   Object.keys(SETS).forEach(function (k) { if (!SETS[k].line) SETS[k].line = SETS[k].top + PANTS; });
   // The order the sets appear in everywhere: the list, the sections, the menu.
@@ -77,8 +73,6 @@ window.JAM = (function () {
     [1799638471, 'riviera', 'yellow',     'أصفر',         '#F2C319', 'sydney',   '62588b9f-75b1-46ac-8de8-18b61466f561', '4235f0b4-b6ce-4eda-a95a-b702e1d6e58b', 1],
     [703708049,  'riviera', 'rust',       'قرميدي',       '#A8452F', 'istanbul', 'addb6366-f276-4420-a8f9-88c8b93b47f1', '39fd1b64-8501-4a67-a093-b32a3f70e6f8', 1],
     [1608282197, 'riviera', 'black',      'أسود',         '#161616', 'nyc',      '1a26ac2a-c7a4-41ab-b83e-6ce0e495d9ba', null, 1],
-
-    [0, 'test', 'pay', 'تجربة', '#8A8F98', 'paris', 'versailles-mustard-set', null, 1],
   ];
 
   var PRODUCTS = ROWS.map(function (r) {
