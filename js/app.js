@@ -535,10 +535,32 @@
           return api('/orders/' + forOrder + '/payment', { payment_id: payment.id }).catch(function () {});
         }
       });
+      dressApplePay();
     }).catch(function () {
       var n = document.getElementById('payNotice');
       if (n) { n.hidden = false; n.textContent = 'ما قدرنا نفتح نموذج الدفع. تأكدي من الاتصال وحدّثي الصفحة.'; }
     });
+  }
+  // Moyasar draws its Apple Pay button with Safari's -apple-pay-button style, which other browsers ignore,
+  // leaving an empty bar. There, put Apple's own <apple-pay-button> (from Apple's JS SDK) inside it as the face.
+  // Clicks pass through to Moyasar's button, which runs the payment.
+  function dressApplePay() {
+    var native = window.CSS && CSS.supports && CSS.supports('-webkit-appearance', '-apple-pay-button');
+    if (native) return;
+    var tries = 0;
+    (function look() {
+      var b = document.querySelector('#payForm .mysr-form-applePayButton');
+      if (!b) { if (++tries < 40) setTimeout(look, 150); return; }
+      if (b.querySelector('apple-pay-button')) return;
+      b.classList.add('ap-dressed');
+      var face = document.createElement('apple-pay-button');
+      face.setAttribute('buttonstyle', 'black');
+      face.setAttribute('type', 'plain');
+      face.setAttribute('locale', 'ar-AB');
+      face.setAttribute('aria-hidden', 'true');
+      b.setAttribute('aria-label', 'Apple Pay');
+      b.appendChild(face);
+    })();
   }
   function resultHtml(title, lines, actions) {
     return '<section class="co co--result"><h1>' + title + '</h1><div class="result">' +
